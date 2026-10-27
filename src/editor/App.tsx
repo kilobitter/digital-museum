@@ -4,8 +4,9 @@ import { defaultMuseum, parseMuseum } from '../shared/validate';
 import { deleteMediaFile, loadMuseum, saveMuseum, uploadMedia } from './api';
 import { Canvas, type CanvasHandle } from './Canvas';
 import { Inspector, SettingsPanel } from './Inspector';
-import { Library } from './Library';
-import { AUDIO_WARN_BYTES, mediaKindOf, prepareImage } from './media';
+import { Library, type Section } from './Library';
+import { isLoopbackHost, localEditorUrl } from './host';
+import { AUDIO_WARN_BYTES, MAX_TEXTURE_SIDE, mediaKindOf, prepareImage, titleFromFilename } from './media';
 import {
   addMedia, computeWarnings, deleteWall, deleteWork, deleteZone, findWall, findWork, findZone, removeMedia,
 } from './model';
@@ -56,6 +57,10 @@ export function App() {
   const [bigAudio, setBigAudio] = useState<ReadonlySet<string>>(new Set());
   const [interacting, setInteracting] = useState(false);
   const [dropping, setDropping] = useState(false);
+  const [randomHang, setRandomHang] = useState(false);
+  // The dev write API only accepts loopback requests; elsewhere the editor is view-only.
+  const local = isLoopbackHost(window.location.hostname);
+  const localRef = useRef(local);
   const canvas = useRef<CanvasHandle>(null);
 
   const museum = hist.present;
@@ -87,7 +92,7 @@ export function App() {
 
   // ----- saving -----
   const saveNow = useCallback(async () => {
-    if (savingRef.current) return;
+    if (savingRef.current || !localRef.current) return;
     const snap = presentRef.current;
     const parsed = parseMuseum(snap);
     if (!parsed.ok) {
@@ -115,11 +120,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!local) return;
     if (!shouldScheduleAutosave({ ready: boot.phase === 'ready', interacting, present: museum, saved: savedRef.current })) return;
     const t = setTimeout(() => void saveNow(), 2000);
     return () => clearTimeout(t);
     // re-runs when a gesture ends (interacting -> false), which reschedules the save
-  }, [museum, interacting, boot.phase, saveNow]);
+  }, [museum, interacting, boot.phase, saveNow, local]);
 
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
@@ -190,22 +196,29 @@ export function App() {
     null;
 
   const addFiles = useCallback(
-    async (files: File[]) => {
+    async (files: File[], section: Section) => {
+      if (!localRef.current) return;
       let n = 0;
       const failures: string[] = [];
       for (const f of files) {
-        const kind = mediaKindOf(f);
-        if (!kind) {
+        const fileKind = mediaKindOf(f);
+        if (!fileKind) {
           failures.push(`${f.name}: unsupported type`);
           continue;
         }
+        if ((section === 'audio') !== (fileKind === 'audio')) {
+          failures.push(`${f.name}: ${fileKind === 'audio' ? 'audio belongs in the Audio section' : 'images go into Paintings or Textures'}`);
+          continue;
+        }
+        const kind = section;
         setBusy(`Uploading ${f.name} (${++n}/${files.length})…`);
         try {
           let item: Parameters<typeof addMedia>[1];
-          if (kind === 'image') {
-            const img = await prepareImage(f);
+          if (kind === 'image' || kind === 'texture') {
+            const img = await prepareImage(f, kind === 'texture' ? MAX_TEXTURE_SIDE : undefined);
             const file = await uploadMedia(f.name.replace(/\.[^.]+$/, '') + '.jpg', img.blob);
             item = { kind, file, name: f.name, width: img.width, height: img.height };
+            if (kind === 'image') item.title = titleFromFilename(f.name);
           } else {
             const file = await uploadMedia(f.name, f);
             item = { kind, file, name: f.name };
@@ -233,7 +246,8 @@ export function App() {
     async (id: string) => {
       const item = museum.media.find((x) => x.id === id);
       if (!item) return;
-      if (removeMedia(museum, id) === null) return notify('This file is still used by a work or zone.');
+      if (!localRef.current) return;
+      if (removeMedia(museum, id) === null) return notify('This file is still used by a work, zone or wall finish.');
       try {
         await deleteMediaFile(item.file);
       } catch (e) {
@@ -248,7 +262,15 @@ export function App() {
 
   const selectMedia = (id: string | null) => {
     setSelectedMediaId(id);
-    if (id && museum.media.find((x) => x.id === id)?.kind === 'image') setTool('work');
+    if (id && museum.media.find((x) => x.id === id)?.kind === 'image') {
+      setTool('work');
+      setRandomHang(false);
+    }
+  };
+
+  const toggleRandom = () => {
+    setRandomHang((r) => !r);
+    setTool('work');
   };
 
   const warnings = computeWarnings(museum);
@@ -297,7 +319,11 @@ export function App() {
       onDrop={(e) => {
         e.preventDefault();
         setDropping(false);
-        void addFiles([...e.dataTransfer.files]);
+        // Dropping outside a library section is ambiguous for images: audio only.
+        const dropped = [...e.dataTransfer.files];
+        const audio = dropped.filter((f) => mediaKindOf(f) === 'audio');
+        if (audio.length < dropped.length) notify('Drop images onto the Paintings or Textures section of the library.');
+        if (audio.length) void addFiles(audio, 'audio');
       }}
     >
       <header className="topbar">
@@ -309,7 +335,7 @@ export function App() {
         <button className={'status ' + status.cls} onClick={() => saveState === 'error' && setShowErrors((v) => !v)} title={saveState === 'error' ? 'Show errors' : ''}>
           <i /> {status.text}
         </button>
-        <button className="primary" onClick={() => void saveNow()} disabled={saveState === 'saving'} title="Ctrl/Cmd+S">Save</button>
+        <button className="primary" onClick={() => void saveNow()} disabled={saveState === 'saving' || !local} title="Ctrl/Cmd+S">Save</button>
         <a className="btn" href="./index.html" target="_blank" rel="noreferrer">Preview ↗</a>
       </header>
 
@@ -317,6 +343,13 @@ export function App() {
         <div className="error-panel">
           <div className="row"><strong>{saveState === 'error' ? 'Not saved' : 'Errors'}</strong><span className="grow" /><button onClick={() => setShowErrors(false)}>Close</button></div>
           <ul className="errors">{saveErrors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+        </div>
+      )}
+
+      {!local && (
+        <div className="banner">
+          Saving only works from this computer: open{' '}
+          <a href={localEditorUrl(window.location.port)}>{localEditorUrl(window.location.port)}</a>. Save and uploads are disabled here.
         </div>
       )}
 
@@ -336,6 +369,7 @@ export function App() {
           tool={tool}
           selection={sel}
           selectedMediaId={selectedMediaId && museum.media.find((x) => x.id === selectedMediaId)?.kind === 'image' ? selectedMediaId : null}
+          randomHang={randomHang}
           audioMediaId={audioMediaId}
           onSelect={setSelection}
           onPreview={(m) => dispatch({ type: 'preview', museum: m })}
@@ -344,13 +378,13 @@ export function App() {
           onNotice={notify}
           onInteraction={setInteracting}
         />
-        <div className="hintbar">{TOOLS.find((t) => t.tool === tool)?.hint}</div>
+        <div className="hintbar">{tool === 'work' && randomHang ? 'Random painting: click a wall face to hang a painting you have not hung yet.' : TOOLS.find((t) => t.tool === tool)?.hint}</div>
         {notice && <div className="toast" onClick={() => setNotice(null)}>{notice}</div>}
-        {dropping && <div className="dropveil">Drop files to add to the media library</div>}
+        {dropping && <div className="dropveil">Drop audio here, or images onto a library section</div>}
       </main>
 
       <aside className="sidebar">
-        <Inspector museum={museum} selection={sel} onChange={change} onDeleted={() => setSelection(null)} />
+        <Inspector museum={museum} selection={sel} selectedMediaId={selectedMediaId} onChange={change} onDeleted={() => setSelection(null)} />
         <SettingsPanel museum={museum} onChange={change} />
         <section className="panel">
           <h3>Warnings {warnings.length > 0 && <span className="badge">{warnings.length}</span>}</h3>
@@ -362,7 +396,7 @@ export function App() {
                 <li key={i}>
                   <button
                     className="link"
-                    onClick={() => setSelection(w.target.type === 'spawn' ? { type: 'spawn' } : { type: w.target.type, id: w.target.id })}
+                    onClick={() => setSelection(w.target.type === 'spawn' ? { type: 'spawn' } : w.target.type === 'settings' ? null : { type: w.target.type, id: w.target.id })}
                   >
                     {w.message}
                   </button>
@@ -373,7 +407,7 @@ export function App() {
         </section>
       </aside>
 
-      <Library museum={museum} selectedId={selectedMediaId} bigAudio={bigAudio} busy={busy} onSelect={selectMedia} onFiles={(f) => void addFiles(f)} onDelete={(id) => void deleteMedia(id)} />
+      <Library museum={museum} selectedId={selectedMediaId} bigAudio={bigAudio} busy={busy} readOnly={!local} randomHang={randomHang} onSelect={selectMedia} onFiles={(f, s) => void addFiles(f, s)} onDelete={(id) => void deleteMedia(id)} onToggleRandom={toggleRandom} />
     </div>
   );
 }

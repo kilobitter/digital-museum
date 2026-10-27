@@ -112,10 +112,10 @@ describe('file operations', () => {
   });
   it('saveMuseum rejects invalid data without touching the file', async () => {
     await saveMuseum(root, defaultMuseum());
-    const r = await saveMuseum(root, { version: 2 });
+    const r = await saveMuseum(root, { version: 3 });
     expect(r.status).toBe(400);
     expect(r.status === 400 && r.body.errors.length).toBeGreaterThan(0);
-    expect(JSON.parse(await fs.readFile(path.join(root, 'museum.json'), 'utf8')).version).toBe(1);
+    expect(JSON.parse(await fs.readFile(path.join(root, 'museum.json'), 'utf8')).version).toBe(2);
   });
   it('saveMedia picks id and extension server-side', async () => {
     const r = await saveMedia(root, '../../evil name.PNG', Buffer.from([1, 2, 3]));

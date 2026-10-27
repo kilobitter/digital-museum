@@ -5,6 +5,7 @@ import { wallNormal } from '../shared/geometry';
 import {
   addMedia, addRoom, addWall, addZone, clampT, coincidentEndpoints, computeWarnings, deleteWall, findHangTarget, flipWork, hangWork,
   mediaUsage, moveEndpoints, removeMedia, resizeRect, setWorkT, updateWork, updateZone, snapValue, moveWall,
+  pickRandomPainting, updateMedia, setWallFinish, updateSettings, hungCount,
 } from './model';
 import { canRedo, canUndo, commitFrom, createHistory, push, redo, replace, undo } from './history';
 import { hitTest } from './hit';
@@ -86,12 +87,13 @@ describe('hanging works', () => {
     const m = addWall(horiz, { x: 0, y: 0.6 }, { x: 4, y: 0.6 })!.museum;
     expect(findHangTarget(m, { x: 1, y: 0.45 })!.wallId).toBe(m.walls[1].id);
   });
-  it('defaults: width, height, title from filename', () => {
+  it('defaults: width, centre height, side, t', () => {
     const img = withImage(horiz, 'My Photo.final.PNG');
     const t = findHangTarget(img.museum, { x: 2, y: 0.2 })!;
     const { museum, id } = hangWork(img.museum, img.id, t)!;
     const w = museum.works.find((x) => x.id === id)!;
-    expect(w).toMatchObject({ width: 1, centerHeight: 1.5, title: 'My Photo.final', artist: '', side: 1, t: 2 });
+    expect(w).toMatchObject({ width: 1, centerHeight: 1.5, side: 1, t: 2 });
+    expect(w).not.toHaveProperty('title');
   });
   it('short wall: width = length - 0.2, t stays on the wall', () => {
     const m = addWall(defaultMuseum(), { x: 0, y: 0 }, { x: 0.8, y: 0 })!.museum;
@@ -244,5 +246,95 @@ describe('hit testing', () => {
     expect(hitTest(m, { x: 3, y: 2 }, 0.1, null)).toMatchObject({ type: 'spawn' });
     expect(hitTest(m, { x: 0.5, y: 0.5 }, 0.1, z.id)).toMatchObject({ type: 'zoneHandle', handle: 'nw' });
     expect(hitTest(m, { x: 3.5, y: 2.5 }, 0.1, null)).toBeNull();
+  });
+});
+
+
+describe('pickRandomPainting', () => {
+  const add = (m: Museum, kind: 'image' | 'texture' | 'audio', name: string) =>
+    addMedia(m, kind === 'audio' ? { kind, file: 'media/x.mp3', name } : { kind, file: 'media/x.png', name, width: 10, height: 10 });
+  const setup = () => {
+    let m = addWall(defaultMuseum(), { x: 0, y: 0 }, { x: 4, y: 0 })!.museum;
+    const a = add(m, 'image', 'a'); m = a.museum;
+    const b = add(m, 'image', 'b'); m = b.museum;
+    const c = add(m, 'image', 'c'); m = c.museum;
+    m = add(m, 'texture', 'tex').museum;
+    m = add(m, 'audio', 'aud').museum;
+    return { m, a: a.id, b: b.id, c: c.id };
+  };
+  const hang = (m: Museum, mediaId: string) =>
+    hangWork(m, mediaId, { wallId: m.walls[0].id, side: 1, t: 2, point: { x: 2, y: 0 } })!.museum;
+  const sweep = (m: Museum, exclude?: string) => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 20; i++) seen.add(pickRandomPainting(m, () => i / 20, exclude)!.id);
+    return seen;
+  };
+  it('empty library (or only textures/audio) -> null', () => {
+    expect(pickRandomPainting(defaultMuseum(), Math.random)).toBeNull();
+    let m = add(defaultMuseum(), 'texture', 't').museum;
+    m = add(m, 'audio', 'a').museum;
+    expect(pickRandomPainting(m, Math.random)).toBeNull();
+  });
+  it('prefers paintings that are not hung, never textures or audio', () => {
+    const { m, a, b, c } = setup();
+    const h = hang(m, a);
+    expect(sweep(h)).toEqual(new Set([b, c]));
+    expect(sweep(m)).toEqual(new Set([a, b, c]));
+  });
+  it('falls back to all paintings when all are hung', () => {
+    const { m, a, b, c } = setup();
+    const h = hang(hang(hang(m, a), b), c);
+    expect(sweep(h)).toEqual(new Set([a, b, c]));
+  });
+  it('excludes the given painting when another choice exists', () => {
+    const { m, a, b, c } = setup();
+    const h = hang(hang(hang(m, a), b), c);
+    expect(sweep(h, a)).toEqual(new Set([b, c]));
+    // unhung pool is just the excluded one: fall back to the others
+    expect(sweep(m, a)).toEqual(new Set([b, c]));
+  });
+  it('returns the only painting even when it is excluded', () => {
+    let m = defaultMuseum();
+    const a = add(m, 'image', 'a'); m = a.museum;
+    expect(pickRandomPainting(m, () => 0.5, a.id)!.id).toBe(a.id);
+  });
+  it('rng near 1 stays in range', () => {
+    const { m } = setup();
+    expect(pickRandomPainting(m, () => 0.999999)).not.toBeNull();
+  });
+});
+
+describe('media labels and wall finishes', () => {
+  it('updateMedia edits fields and removes empty ones', () => {
+    const img = withImage(defaultMuseum());
+    let m = updateMedia(img.museum, img.id, { title: 'T', artist: 'A' });
+    expect(m.media[0]).toMatchObject({ title: 'T', artist: 'A' });
+    m = updateMedia(m, img.id, { title: '' });
+    expect(m.media[0]).not.toHaveProperty('title');
+    expect(m.media[0].artist).toBe('A');
+  });
+  it('setWallFinish sets and clears a wall override', () => {
+    const w = addWall(defaultMuseum(), { x: 0, y: 0 }, { x: 4, y: 0 })!;
+    const f = { color: '#112233', tileSize: 2 };
+    const m = setWallFinish(w.museum, w.id, f);
+    expect(m.walls[0].finish).toEqual(f);
+    expect(setWallFinish(m, w.id, undefined).walls[0]).not.toHaveProperty('finish');
+  });
+  it('texture references count as usage and block deletion', () => {
+    const w = addWall(defaultMuseum(), { x: 0, y: 0 }, { x: 4, y: 0 })!;
+    const t = addMedia(w.museum, { kind: 'texture', file: 'media/t.png', name: 't', width: 8, height: 8 });
+    expect(mediaUsage(t.museum, t.id)).toBe(0);
+    const viaWall = setWallFinish(t.museum, w.id, { textureId: t.id, color: '#ffffff', tileSize: 1 });
+    expect(mediaUsage(viaWall, t.id)).toBe(1);
+    expect(removeMedia(viaWall, t.id)).toBeNull();
+    const viaSettings = updateSettings(t.museum, { wallFinish: { textureId: t.id, color: '#ffffff', tileSize: 1 } });
+    expect(mediaUsage(viaSettings, t.id)).toBe(1);
+    expect(removeMedia(viaSettings, t.id)).toBeNull();
+    expect(hungCount(viaSettings, t.id)).toBe(0);
+  });
+  it('warns about a missing texture', () => {
+    const w = addWall(defaultMuseum(), { x: 0, y: 0 }, { x: 4, y: 0 })!;
+    const m = setWallFinish(w.museum, w.id, { textureId: 'gone', color: '#ffffff', tileSize: 1 });
+    expect(computeWarnings(m).map((x) => x.kind)).toContain('texture-missing');
   });
 });

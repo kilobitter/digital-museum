@@ -1,5 +1,5 @@
 // Pure editor operations on an immutable Museum. No React, no DOM.
-import type { AudioZone, MediaItem, Museum, MuseumSettings, Vec2, Wall, WallSide, Work, ZoneShape } from '../shared/museum';
+import type { AudioZone, MediaItem, Museum, MuseumSettings, Vec2, Wall, WallFinish, WallSide, Work, ZoneShape } from '../shared/museum';
 import { closestPointOnSegment, wallLength, wallNormal } from '../shared/geometry';
 
 export const EPS = 1e-4;
@@ -151,10 +151,24 @@ export function hangWork(m: Museum, mediaId: string, target: HangTarget): { muse
     t: clampT(wall, width, target.t),
     centerHeight: 1.5,
     width,
-    title: media.name.replace(/\.[^./\\]+$/, ''),
-    artist: '',
   };
   return { museum: { ...m, works: [...m.works, work] }, id };
+}
+
+/**
+ * Choose a painting for the "random" hang: uniformly from paintings no work references yet; when all
+ * are hung, uniformly from all paintings. `exclude` (the current painting) is skipped when any other
+ * candidate exists. Textures and audio are never picked. `rng` returns [0, 1).
+ */
+export function pickRandomPainting(m: Museum, rng: () => number, exclude?: string): MediaItem | null {
+  const paintings = m.media.filter((x) => x.kind === 'image');
+  if (paintings.length === 0) return null;
+  const hung = new Set(m.works.map((w) => w.mediaId));
+  const unhung = paintings.filter((x) => !hung.has(x.id));
+  let pool = unhung.length > 0 ? unhung : paintings;
+  if (exclude !== undefined && pool.some((x) => x.id !== exclude)) pool = pool.filter((x) => x.id !== exclude);
+  else if (exclude !== undefined && pool !== paintings && paintings.some((x) => x.id !== exclude)) pool = paintings.filter((x) => x.id !== exclude);
+  return pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
 }
 
 export function updateWork(m: Museum, id: string, patch: Partial<Omit<Work, 'id'>>): Museum {
@@ -239,8 +253,52 @@ export function setSpawn(m: Museum, patch: Partial<MuseumSettings['spawn']>): Mu
   return { ...m, settings: { ...m.settings, spawn: { ...m.settings.spawn, ...patch } } };
 }
 
+/** Works + zones + wall finishes (settings default and per-wall) that reference this media item. */
 export function mediaUsage(m: Museum, mediaId: string): number {
-  return m.works.filter((w) => w.mediaId === mediaId).length + m.zones.filter((z) => z.mediaId === mediaId).length;
+  return (
+    m.works.filter((w) => w.mediaId === mediaId).length +
+    m.zones.filter((z) => z.mediaId === mediaId).length +
+    m.walls.filter((w) => w.finish?.textureId === mediaId).length +
+    (m.settings.wallFinish.textureId === mediaId ? 1 : 0)
+  );
+}
+
+/** Number of works that hang this painting. */
+export function hungCount(m: Museum, mediaId: string): number {
+  return m.works.filter((w) => w.mediaId === mediaId).length;
+}
+
+export type MediaPatch = Partial<Pick<MediaItem, 'title' | 'artist' | 'description'>>;
+
+/** Edit label fields on a media item; empty strings remove the field. */
+export function updateMedia(m: Museum, id: string, patch: MediaPatch): Museum {
+  return {
+    ...m,
+    media: m.media.map((x) => {
+      if (x.id !== id) return x;
+      const next = { ...x, ...patch };
+      for (const k of ['title', 'artist', 'description'] as const) if (next[k] === '') delete next[k];
+      return next;
+    }),
+  };
+}
+
+/** Set (or with undefined, clear) a wall's own finish. */
+export function setWallFinish(m: Museum, wallId: string, finish: WallFinish | undefined): Museum {
+  return {
+    ...m,
+    walls: m.walls.map((w) => {
+      if (w.id !== wallId) return w;
+      const { finish: _old, ...rest } = w;
+      return finish ? { ...rest, finish } : rest;
+    }),
+  };
+}
+
+/** Title shown for a work: its painting's title, else the file name. */
+export function workLabel(m: Museum, w: Work): string {
+  const media = findMedia(m, w.mediaId);
+  return media?.title || media?.name || w.id;
 }
 
 export function addMedia(m: Museum, item: Omit<MediaItem, 'id'>): { museum: Museum; id: string } {
@@ -257,14 +315,14 @@ export function removeMedia(m: Museum, mediaId: string): Museum | null {
 // ---------- warnings ----------
 
 export interface EditorWarning {
-  kind: 'past-wall-end' | 'overlap' | 'above-wall' | 'below-floor' | 'zone-no-audio' | 'spawn-in-wall';
+  kind: 'past-wall-end' | 'overlap' | 'above-wall' | 'below-floor' | 'zone-no-audio' | 'spawn-in-wall' | 'texture-missing';
   message: string;
-  target: { type: 'work' | 'zone' | 'spawn'; id: string };
+  target: { type: 'work' | 'zone' | 'spawn' | 'wall' | 'settings'; id: string };
 }
 
 export function computeWarnings(m: Museum): EditorWarning[] {
   const out: EditorWarning[] = [];
-  const label = (w: Work) => `"${w.title || w.id}"`;
+  const label = (w: Work) => `"${workLabel(m, w)}"`;
   const tol = 1e-6;
 
   for (const w of m.works) {
@@ -296,6 +354,16 @@ export function computeWarnings(m: Museum): EditorWarning[] {
     const media = findMedia(m, z.mediaId);
     if (!media || media.kind !== 'audio')
       out.push({ kind: 'zone-no-audio', message: `Zone "${z.name || z.id}" has no audio`, target: { type: 'zone', id: z.id } });
+  }
+
+  const isTexture = (id: string) => findMedia(m, id)?.kind === 'texture';
+  const dflt = m.settings.wallFinish.textureId;
+  if (dflt !== undefined && !isTexture(dflt))
+    out.push({ kind: 'texture-missing', message: 'The default wall texture is missing', target: { type: 'settings', id: 'settings' } });
+  for (const wall of m.walls) {
+    const t = wall.finish?.textureId;
+    if (t !== undefined && !isTexture(t))
+      out.push({ kind: 'texture-missing', message: `A wall's texture is missing (${wall.id})`, target: { type: 'wall', id: wall.id } });
   }
 
   const sp = m.settings.spawn;

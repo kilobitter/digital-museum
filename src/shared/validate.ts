@@ -4,6 +4,7 @@ import {
   type MediaItem,
   type Museum,
   type Wall,
+  type WallFinish,
   type Work,
   type ZoneShape,
 } from './museum';
@@ -17,6 +18,7 @@ export function defaultMuseum(): Museum {
       wallThickness: 0.2,
       gridSize: 0.5,
       ceiling: true,
+      wallFinish: { color: '#ffffff', tileSize: 1 },
       spawn: { x: 0, y: 0, yawDeg: 0 },
     },
     walls: [],
@@ -26,6 +28,7 @@ export function defaultMuseum(): Museum {
   };
 }
 
+const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const FILE_RE = /^media\/[A-Za-z0-9_-]+\.(jpg|jpeg|png|webp|mp3|m4a|aac|ogg|wav)$/;
 
 type Obj = Record<string, unknown>;
@@ -76,8 +79,28 @@ export function parseMuseum(
     return { x: num(v, 'x', path), y: num(v, 'y', path) };
   };
 
-  if (json.version !== MUSEUM_VERSION) err('version', `expected ${MUSEUM_VERSION} (got ${JSON.stringify(json.version)})`);
+  // v1 files are validated with the v1 rules and then migrated (see the end of this function).
+  const legacy = json.version === 1;
+  if (json.version !== MUSEUM_VERSION && !legacy) err('version', `expected ${MUSEUM_VERSION} (got ${JSON.stringify(json.version)})`);
   const name = typeof json.name === 'string' ? json.name : (err('name', 'expected a string'), '');
+
+  /** Collected after media is parsed; needs the media ids, so it is validated lazily. */
+  const finishes: { f: WallFinish; path: string }[] = [];
+  const finish = (v: unknown, path: string): WallFinish => {
+    if (!isObj(v)) {
+      err(path, 'expected {color, tileSize}');
+      return { color: '#ffffff', tileSize: 1 };
+    }
+    const f: WallFinish = { color: '#ffffff', tileSize: num(v, 'tileSize', path, { positive: true }) };
+    if (typeof v.color !== 'string' || !COLOR_RE.test(v.color)) err(`${path}.color`, "expected a colour like '#rrggbb'");
+    else f.color = v.color;
+    if (v.textureId !== undefined) {
+      if (typeof v.textureId === 'string') f.textureId = v.textureId;
+      else err(`${path}.textureId`, 'expected a string');
+    }
+    if (f.textureId !== undefined) finishes.push({ f, path });
+    return f;
+  };
 
   // settings
   const def = defaultMuseum().settings;
@@ -92,6 +115,7 @@ export function parseMuseum(
       wallThickness: num(s, 'wallThickness', 'settings', { positive: true }),
       gridSize: num(s, 'gridSize', 'settings', { positive: true }),
       ceiling: s.ceiling === true,
+      wallFinish: legacy ? { ...def.wallFinish } : finish(s.wallFinish, 'settings.wallFinish'),
       spawn: {
         x: num(sp, 'x', 'settings.spawn'),
         y: num(sp, 'y', 'settings.spawn'),
@@ -114,7 +138,8 @@ export function parseMuseum(
       err(p, 'expected an object');
       return { id: '', a: { x: 0, y: 0 }, b: { x: 0, y: 0 } };
     }
-    const w = { id: str(raw, 'id', p), a: vec(raw.a, `${p}.a`), b: vec(raw.b, `${p}.b`) };
+    const w: Wall = { id: str(raw, 'id', p), a: vec(raw.a, `${p}.a`), b: vec(raw.b, `${p}.b`) };
+    if (!legacy && raw.finish !== undefined) w.finish = finish(raw.finish, `${p}.finish`);
     if (isObj(raw.a) && isObj(raw.b) && isNum(raw.a.x) && isNum(raw.a.y) && isNum(raw.b.x) && isNum(raw.b.y) && w.a.x === w.b.x && w.a.y === w.b.y)
       err(p, 'zero-length wall (a and b are identical)');
     return w;
@@ -128,29 +153,46 @@ export function parseMuseum(
       return { id: '', kind: 'image', file: '', name: '' };
     }
     const id = str(raw, 'id', p);
-    const kind = raw.kind === 'image' || raw.kind === 'audio' ? raw.kind : (err(`${p}.kind`, "expected 'image' or 'audio'"), 'image' as const);
+    const kind =
+      raw.kind === 'image' || raw.kind === 'audio' || (!legacy && raw.kind === 'texture')
+        ? raw.kind
+        : (err(`${p}.kind`, legacy ? "expected 'image' or 'audio'" : "expected 'image', 'audio' or 'texture'"), 'image' as const);
     const file = str(raw, 'file', p);
     if (typeof raw.file === 'string' && !FILE_RE.test(raw.file))
       err(`${p}.file`, `invalid path '${raw.file}' (expected media/<name>.<jpg|jpeg|png|webp|mp3|m4a|aac|ogg|wav>)`);
     const m: MediaItem = { id, kind, file, name: typeof raw.name === 'string' ? raw.name : (err(`${p}.name`, 'expected a string'), '') };
-    if (kind === 'image') {
+    if (kind === 'image' || kind === 'texture') {
       m.width = num(raw, 'width', p, { positive: true });
       m.height = num(raw, 'height', p, { positive: true });
     } else {
       if (isNum(raw.width)) m.width = raw.width;
       if (isNum(raw.height)) m.height = raw.height;
     }
+    if (!legacy) {
+      for (const k of ['title', 'artist', 'description'] as const) {
+        if (raw[k] === undefined) continue;
+        if (typeof raw[k] === 'string') m[k] = raw[k];
+        else err(`${p}.${k}`, 'expected a string');
+      }
+    }
     return m;
   });
   uniq(media, 'media');
   const mediaById = new Map(media.map((m) => [m.id, m]));
   const wallIds = new Set(walls.map((w) => w.id));
+  for (const { f, path } of finishes) {
+    const m = mediaById.get(f.textureId!);
+    if (!m) err(`${path}.textureId`, `no media with id '${f.textureId}'`);
+    else if (m.kind !== 'texture') err(`${path}.textureId`, `media '${f.textureId}' is not a texture`);
+  }
 
+  type LegacyLabel = { title: string; artist: string; description: string };
+  const legacyLabels: { mediaId: string; label: LegacyLabel }[] = [];
   const works: Work[] = arr('works').map((raw, i) => {
     const p = `works[${i}]`;
     if (!isObj(raw)) {
       err(p, 'expected an object');
-      return { id: '', mediaId: '', wallId: '', side: 1, t: 0, centerHeight: 1.5, width: 1, title: '', artist: '' };
+      return { id: '', mediaId: '', wallId: '', side: 1, t: 0, centerHeight: 1.5, width: 1 };
     }
     const id = str(raw, 'id', p);
     const mediaId = str(raw, 'mediaId', p);
@@ -170,12 +212,15 @@ export function parseMuseum(
       t: num(raw, 't', p),
       centerHeight: num(raw, 'centerHeight', p),
       width: num(raw, 'width', p, { positive: true }),
-      title: str(raw, 'title', p, false),
-      artist: str(raw, 'artist', p, false),
     };
-    if (raw.description !== undefined) {
-      if (typeof raw.description === 'string') w.description = raw.description;
-      else err(`${p}.description`, 'expected a string');
+    if (legacy) {
+      // v1 label fields: validated as before, then moved onto the media item below.
+      const l: LegacyLabel = { title: str(raw, 'title', p, false), artist: str(raw, 'artist', p, false), description: '' };
+      if (raw.description !== undefined) {
+        if (typeof raw.description === 'string') l.description = raw.description;
+        else err(`${p}.description`, 'expected a string');
+      }
+      legacyLabels.push({ mediaId, label: l });
     }
     return w;
   });
@@ -227,5 +272,13 @@ export function parseMuseum(
   uniq(zones, 'zones');
 
   if (errors.length) return { ok: false, errors };
+  if (legacy) {
+    // First work (array order) with a non-empty value wins, per field.
+    for (const { mediaId, label } of legacyLabels) {
+      const m = mediaById.get(mediaId);
+      if (!m) continue;
+      for (const k of ['title', 'artist', 'description'] as const) if (!m[k] && label[k]) m[k] = label[k];
+    }
+  }
   return { ok: true, museum: { version: MUSEUM_VERSION, name, settings, walls, works, zones, media } };
 }

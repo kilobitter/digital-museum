@@ -1,10 +1,14 @@
 // Client-side media preparation.
 export const MAX_IMAGE_SIDE = 2048;
+export const MAX_TEXTURE_SIDE = 1024;
 export const JPEG_QUALITY = 0.85;
 export const AUDIO_WARN_BYTES = 15 * 1024 * 1024;
 
 const IMAGE_EXT = /\.(jpe?g|png|webp)$/i;
 const AUDIO_EXT = /\.(mp3|m4a|aac|ogg|wav)$/i;
+
+/** Filename without its extension, used as the default painting title. */
+export const titleFromFilename = (name: string) => name.replace(/\.[^./\\]+$/, '');
 
 export function mediaKindOf(file: File): 'image' | 'audio' | null {
   if (IMAGE_EXT.test(file.name)) return 'image';
@@ -19,10 +23,10 @@ export function fitSize(w: number, h: number, max = MAX_IMAGE_SIDE): { width: nu
 }
 
 /** Decode (EXIF orientation applied), downscale, and re-encode as JPEG. */
-export async function prepareImage(file: File): Promise<{ blob: Blob; width: number; height: number }> {
+export async function prepareImage(file: File, maxSide = MAX_IMAGE_SIDE): Promise<{ blob: Blob; width: number; height: number }> {
   const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
   try {
-    const { width, height } = fitSize(bmp.width, bmp.height);
+    const { width, height } = fitSize(bmp.width, bmp.height, maxSide);
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;

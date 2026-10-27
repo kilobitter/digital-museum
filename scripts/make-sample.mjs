@@ -1,11 +1,24 @@
-// Generates the sample museum into public/museum/ (no dependencies).
-// Usage: node scripts/make-sample.mjs
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+// Generates a sample museum (format v2) into the given folder (no dependencies).
+// Usage: node scripts/make-sample.mjs <outDir> [--force]
+// Refuses to write into public/museum when it already holds a museum.json, unless --force is given.
+import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'museum');
+const args = process.argv.slice(2);
+const force = args.includes('--force');
+const outArg = args.find((a) => !a.startsWith('--'));
+if (!outArg) {
+  console.error('Usage: node scripts/make-sample.mjs <outDir> [--force]\n(use "public/museum" to regenerate the default museum)');
+  process.exit(2);
+}
+const root = resolve(outArg);
+const publicMuseum = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'museum');
+if (root === publicMuseum && existsSync(join(root, 'museum.json')) && !force) {
+  console.error(`Refusing to overwrite ${join(root, 'museum.json')} (it may hold your own museum).\nPass --force to replace it and its media folder.`);
+  process.exit(1);
+}
 rmSync(join(root, 'media'), { recursive: true, force: true });
 mkdirSync(join(root, 'media'), { recursive: true });
 
@@ -64,6 +77,29 @@ images.forEach((im, i) => {
   writeFileSync(join(root, 'media', `${im.file}.png`), buf);
 });
 
+// ---- plaster texture: subtle seamless value noise (wraps at the edges so tiles join) ----
+const TEX = 256;
+const hash = (x, y) => {
+  let h = (x * 374761393 + y * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+};
+const lattice = (x, y, period) => hash(((x % period) + period) % period, ((y % period) + period) % period);
+const smooth = (t) => t * t * (3 - 2 * t);
+function noise(u, v, period) {
+  const x = u * period, y = v * period;
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const fx = smooth(x - x0), fy = smooth(y - y0);
+  const a = lattice(x0, y0, period), b = lattice(x0 + 1, y0, period);
+  const c = lattice(x0, y0 + 1, period), d = lattice(x0 + 1, y0 + 1, period);
+  return (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy;
+}
+writeFileSync(join(root, 'media', 'plaster.png'), png(TEX, TEX, (u, v, x, y) => {
+  const n = 0.5 * noise(x / TEX, y / TEX, 8) + 0.3 * noise(x / TEX, y / TEX, 32) + 0.2 * hash(x, y);
+  const k = Math.round(228 + n * 24); // 228..252: subtle
+  return [k, k - 2, k - 6];
+}));
+
 // ---- WAV generator (integer cycles over the duration => seamless loop) ----
 function wav(freqs, seconds = 4, rate = 22050) {
   const n = rate * seconds;
@@ -85,37 +121,49 @@ writeFileSync(join(root, 'media', 'hum.wav'), wav([220, 277, 330]));
 writeFileSync(join(root, 'media', 'chime.wav'), wav([440, 660, 880, 1100]));
 
 // ---- museum ----
+const labels = {
+  img1: ['Sunrise', 'A. Student', 'Gradient study, 2026'],
+  img2: ['Forest', 'B. Student'],
+  img3: ['Tide', 'C. Student', 'Square format.'],
+  img4: ['Ember', 'D. Student'],
+  img5: ['Dusk', 'E. Student', 'Panoramic.'],
+  img6: ['Meadow', 'F. Student', 'Hangs on the far wall of room B.'],
+};
 const media = [
-  ...images.map((im) => ({ id: im.id, kind: 'image', file: `media/${im.file}.png`, name: im.name, width: im.w, height: im.h })),
+  ...images.map((im) => {
+    const l = labels[im.id];
+    return { id: im.id, kind: 'image', file: `media/${im.file}.png`, name: im.name, width: im.w, height: im.h, title: l[0], artist: l[1], ...(l[2] ? { description: l[2] } : {}) };
+  }),
+  { id: 'tex1', kind: 'texture', file: 'media/plaster.png', name: 'Plaster.png', width: TEX, height: TEX },
   { id: 'aud1', kind: 'audio', file: 'media/hum.wav', name: 'Hum.wav' },
   { id: 'aud2', kind: 'audio', file: 'media/chime.wav', name: 'Chime.wav' },
 ];
 // Room A: x 0..8, y 0..6. Room B: x 8..16, y 0..6. Doorway in the shared wall at y 2..4.
+// One wall (wB-top) gets its own finish: the plaster texture with a warm tint. The rest use the default.
+const plaster = { textureId: 'tex1', color: '#fff1e0', tileSize: 1.2 };
 const walls = [
   { id: 'wA-top', a: { x: 0, y: 0 }, b: { x: 8, y: 0 } },     // perp = +y (into the room)
   { id: 'wA-bottom', a: { x: 8, y: 6 }, b: { x: 0, y: 6 } },  // perp = -y (into the room)
   { id: 'wA-left', a: { x: 0, y: 6 }, b: { x: 0, y: 0 } },    // perp = +x (into the room)
   { id: 'wD-north', a: { x: 8, y: 0 }, b: { x: 8, y: 2 } },   // perp = -x (room A); side -1 = room B
   { id: 'wD-south', a: { x: 8, y: 6 }, b: { x: 8, y: 4 } },   // perp = +x (room B); side -1 = room A
-  { id: 'wB-top', a: { x: 8, y: 0 }, b: { x: 16, y: 0 } },
+  { id: 'wB-top', a: { x: 8, y: 0 }, b: { x: 16, y: 0 }, finish: plaster },
   { id: 'wB-bottom', a: { x: 16, y: 6 }, b: { x: 8, y: 6 } },
   { id: 'wB-right', a: { x: 16, y: 0 }, b: { x: 16, y: 6 } }, // perp = -x (into the room)
 ];
-const work = (id, mediaId, wallId, side, t, width, title, artist, description) => ({
-  id, mediaId, wallId, side, t, centerHeight: 1.5, width, title, artist, ...(description ? { description } : {}),
-});
+const work = (id, mediaId, wallId, side, t, width) => ({ id, mediaId, wallId, side, t, centerHeight: 1.5, width });
 const museum = {
-  version: 1,
+  version: 2,
   name: 'Sample Museum',
-  settings: { wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, spawn: { x: 4, y: 5, yawDeg: 0 } },
+  settings: { wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, wallFinish: { color: '#ffffff', tileSize: 1 }, spawn: { x: 4, y: 5, yawDeg: 0 } },
   walls,
   works: [
-    work('wk1', 'img1', 'wA-top', 1, 4, 2.4, 'Sunrise', 'A. Student', 'Gradient study, 2026'),
-    work('wk2', 'img2', 'wA-left', 1, 3, 1.2, 'Forest', 'B. Student'),
-    work('wk3', 'img3', 'wA-bottom', 1, 4, 1.5, 'Tide', 'C. Student', 'Square format.'),
-    work('wk4', 'img4', 'wD-south', -1, 1, 1.2, 'Ember', 'D. Student'),
-    work('wk5', 'img5', 'wB-top', 1, 4, 2.8, 'Dusk', 'E. Student', 'Panoramic.'),
-    work('wk6', 'img6', 'wB-right', 1, 3, 1.3, 'Meadow', 'F. Student', 'Hangs on the far wall of room B.'),
+    work('wk1', 'img1', 'wA-top', 1, 4, 2.4),
+    work('wk2', 'img2', 'wA-left', 1, 3, 1.2),
+    work('wk3', 'img3', 'wA-bottom', 1, 4, 1.5),
+    work('wk4', 'img4', 'wD-south', -1, 1, 1.2),
+    work('wk5', 'img5', 'wB-top', 1, 4, 2.8),
+    work('wk6', 'img6', 'wB-right', 1, 3, 1.3),
   ],
   zones: [
     { id: 'z1', name: 'Hum (room A)', mediaId: 'aud1', shape: { kind: 'rect', x: 1.5, y: 1.5, w: 4, h: 3 }, volume: 0.8, fade: 1 },
@@ -124,4 +172,4 @@ const museum = {
   media,
 };
 writeFileSync(join(root, 'museum.json'), JSON.stringify(museum, null, 2) + '\n');
-console.log('Sample museum written to', root);
+console.log('Sample museum (v2) written to', root);

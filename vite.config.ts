@@ -13,6 +13,10 @@ export default defineConfig({
   plugins: [basicSsl(), react(), museumApi(projectRoot)],
   server: {
     host: true,
+    // A fixed, uncommon port; fail loudly instead of silently moving to another one when it is taken
+    // (e.g. by another project's dev server).
+    port: 5317,
+    strictPort: true,
     // The editor saves into public/museum; don't let those writes reload open pages.
     watch: { ignored: ['**/public/museum/**'] },
   },

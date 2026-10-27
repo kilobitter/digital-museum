@@ -5,7 +5,7 @@ import type { Wall, Work } from './museum';
 const horiz: Wall = { id: 'h', a: { x: 0, y: 0 }, b: { x: 4, y: 0 } }; // d=(1,0), perp=(0,1)
 const vert: Wall = { id: 'v', a: { x: 2, y: 0 }, b: { x: 2, y: 3 } }; // d=(0,1), perp=(-1,0)
 const work = (over: Partial<Work>): Work => ({
-  id: 'k', mediaId: 'm', wallId: 'h', side: 1, t: 1, centerHeight: 1.5, width: 1, title: '', artist: '', ...over,
+  id: 'k', mediaId: 'm', wallId: 'h', side: 1, t: 1, centerHeight: 1.5, width: 1, ...over,
 });
 
 describe('wall basics', () => {

@@ -4,7 +4,7 @@ import type { Museum } from '../shared/museum';
 import { ZoneAudio } from './audio';
 import { DesktopControls } from './desktop';
 import { Player } from './player';
-import { buildMuseumScene } from './scene';
+import { buildMuseumScene, usedTextureIds } from './scene';
 import { hideOverlay, setControlsHint, showError, showLoading, showStart, toast } from './ui';
 import { XRLocomotion } from './xr';
 
@@ -70,7 +70,7 @@ async function main(): Promise<void> {
   const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 200);
 
   const audio = new ZoneAudio();
-  const total = museum.works.length + museum.zones.length;
+  const total = museum.works.length + museum.zones.length + usedTextureIds(museum).length;
   let done = 0;
   const progress = () => showLoading(`Loading media ${Math.min(++done, total)} / ${total}…`);
   showLoading(`Loading media 0 / ${total}…`);

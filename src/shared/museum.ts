@@ -7,7 +7,9 @@
 //   world +y is up; floor is at y = 0.
 // So "up" on the blueprint (plan -y) is world -z, the default three.js forward.
 
-export const MUSEUM_VERSION = 1 as const;
+export const MUSEUM_VERSION = 2 as const;
+// v2 (2026-10-27): title/artist/description moved from Work to MediaItem; wall finishes and
+// 'texture' media added. parseMuseum migrates v1 files on load.
 
 export interface Vec2 {
   x: number;
@@ -23,14 +25,27 @@ export interface MuseumSettings {
   gridSize: number;
   /** Render a ceiling at wallHeight over the floor area. Default true. */
   ceiling: boolean;
+  /** Finish for every wall without its own `finish`. Default { color: '#ffffff', tileSize: 1 }. */
+  wallFinish: WallFinish;
   /** Where visitors start. yawDeg 0 faces plan -y (up on the blueprint), 90 faces plan +x; clockwise seen from above. */
   spawn: { x: number; y: number; yawDeg: number };
+}
+
+export interface WallFinish {
+  /** MediaItem id with kind 'texture'. Omit for a plain colour. */
+  textureId?: string;
+  /** '#rrggbb'. Plain colour, or multiplied with the texture (use '#ffffff' for the texture as-is). */
+  color: string;
+  /** Edge length in metres of one square texture tile, on every face of the wall. > 0. */
+  tileSize: number;
 }
 
 export interface Wall {
   id: string;
   a: Vec2;
   b: Vec2;
+  /** Overrides settings.wallFinish for this whole wall (both faces and ends). */
+  finish?: WallFinish;
 }
 
 /**
@@ -50,12 +65,8 @@ export interface Work {
   t: number;
   /** Height of the work's centre above the floor, metres. Default 1.5. */
   centerHeight: number;
-  /** Displayed width in metres; height follows the image aspect ratio. */
+  /** Displayed width in metres; height follows the image aspect ratio. Label text comes from the media item. */
   width: number;
-  title: string;
-  artist: string;
-  /** Optional short caption shown on the label. */
-  description?: string;
 }
 
 export type ZoneShape =
@@ -79,14 +90,19 @@ export interface AudioZone {
 
 export interface MediaItem {
   id: string;
-  kind: 'image' | 'audio';
+  /** 'image' = a painting that can be hung; 'texture' = wall texture only; 'audio' = zone loop. */
+  kind: 'image' | 'audio' | 'texture';
   /** Path relative to the museum folder, always under "media/", e.g. "media/k3f9a2.jpg". */
   file: string;
   /** Original filename / human label. */
   name: string;
-  /** Pixel dimensions, required for images. */
+  /** Pixel dimensions, required for images and textures. */
   width?: number;
   height?: number;
+  /** Label fields, used for kind 'image' (ignored otherwise). Missing = empty. */
+  title?: string;
+  artist?: string;
+  description?: string;
 }
 
 export interface Museum {

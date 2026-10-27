@@ -1,8 +1,9 @@
-import type { Museum } from '../shared/museum';
+import type { MediaItem, Museum, WallFinish } from '../shared/museum';
 import { wallLength } from '../shared/geometry';
 import {
-  coincidentEndpoints, deleteWall, deleteWork, deleteZone, findWall, findWork, findZone, flipWork, imageHeight, moveEndpoints, round4,
-  setSpawn, setWorkT, setWorkWidth, updateSettings, updateWork, updateZone,
+  coincidentEndpoints, deleteWall, deleteWork, deleteZone, findMedia, findWall, findWork, findZone, flipWork, hungCount, imageHeight,
+  moveEndpoints, pickRandomPainting, round4, setSpawn, setWallFinish, setWorkT, setWorkWidth, updateMedia, updateSettings, updateWork,
+  updateZone,
 } from './model';
 import { Field, NumField } from './fields';
 import type { Selection } from './types';
@@ -10,12 +11,58 @@ import type { Selection } from './types';
 interface Props {
   museum: Museum;
   selection: Selection;
+  /** Painting selected in the library; shown when nothing is selected on the blueprint. */
+  selectedMediaId: string | null;
   /** `key` coalesces consecutive edits of the same field into one undo step. */
   onChange(m: Museum, key?: string): void;
   onDeleted(): void;
 }
 
-export function Inspector({ museum: m, selection, onChange, onDeleted }: Props) {
+const title = (x: MediaItem) => x.title || x.name;
+
+/** Colour, texture and tile size of a wall finish. */
+function FinishFields({ finish, museum: m, keyPrefix, onChange }: { finish: WallFinish; museum: Museum; keyPrefix: string; onChange(f: WallFinish, key: string): void }) {
+  const textures = m.media.filter((x) => x.kind === 'texture');
+  const missing = finish.textureId !== undefined && !textures.some((t) => t.id === finish.textureId);
+  const set = (patch: Partial<WallFinish>, key: string) => {
+    const next = { ...finish, ...patch };
+    if (next.textureId === undefined) delete next.textureId;
+    onChange(next, `${keyPrefix}.${key}`);
+  };
+  return (
+    <>
+      <Field label="Texture">
+        <select value={finish.textureId ?? ''} onChange={(e) => set({ textureId: e.target.value || undefined }, 'tex')}>
+          <option value="">(none, plain colour)</option>
+          {missing && <option value={finish.textureId}>(missing)</option>}
+          {textures.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+      </Field>
+      <div className="grid2">
+        <Field label={finish.textureId ? 'Tint' : 'Colour'}>
+          <input type="color" className="colour" value={finish.color} onChange={(e) => set({ color: e.target.value }, 'color')} />
+        </Field>
+        <Field label="Tile size"><NumField value={finish.tileSize} min={0} exclusiveMin step={0.1} onChange={(v) => set({ tileSize: v }, 'tile')} unit="m" /></Field>
+      </div>
+    </>
+  );
+}
+
+/** Title / artist / description of a painting (stored on the media item). */
+function LabelFields({ museum: m, media, onChange }: { museum: Museum; media: MediaItem; onChange: Props['onChange'] }) {
+  const k = (f: string) => `${media.id}.${f}`;
+  return (
+    <>
+      <Field label="Title"><input type="text" value={media.title ?? ''} onChange={(e) => onChange(updateMedia(m, media.id, { title: e.target.value }), k('title'))} /></Field>
+      <Field label="Artist"><input type="text" value={media.artist ?? ''} onChange={(e) => onChange(updateMedia(m, media.id, { artist: e.target.value }), k('artist'))} /></Field>
+      <Field label="Description">
+        <textarea rows={3} value={media.description ?? ''} onChange={(e) => onChange(updateMedia(m, media.id, { description: e.target.value }), k('desc'))} />
+      </Field>
+    </>
+  );
+}
+
+export function Inspector({ museum: m, selection, selectedMediaId, onChange, onDeleted }: Props) {
   const del = (fn: (m: Museum) => Museum) => (
     <button
       className="danger"
@@ -45,6 +92,17 @@ export function Inspector({ museum: m, selection, onChange, onDeleted }: Props) 
           <Field label="B y"><NumField value={w.b.y} onChange={(v) => setEnd('b', 'y', v)} unit="m" /></Field>
         </div>
         <p className="hint">Joined corners move together.</p>
+        <div className="finish">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={w.finish === undefined}
+              onChange={(e) => onChange(setWallFinish(m, w.id, e.target.checked ? undefined : { ...m.settings.wallFinish }))}
+            />
+            Use default finish
+          </label>
+          {w.finish && <FinishFields finish={w.finish} museum={m} keyPrefix={`${w.id}.finish`} onChange={(f, key) => onChange(setWallFinish(m, w.id, f), key)} />}
+        </div>
         {del((x) => deleteWall(x, w.id))}
       </section>
     );
@@ -55,21 +113,30 @@ export function Inspector({ museum: m, selection, onChange, onDeleted }: Props) 
     if (!w) return null;
     const k = (f: string) => `${w.id}.${f}`;
     const images = m.media.filter((x) => x.kind === 'image');
-    const media = m.media.find((x) => x.id === w.mediaId);
+    const media = findMedia(m, w.mediaId);
+    const sharedBy = hungCount(m, w.mediaId);
     return (
       <section className="panel">
         <h3>Work <span className="muted">{imageHeight(m, w).toFixed(2)} m tall</span></h3>
         {media && <img className="inspector-thumb" src={`./museum/${media.file}`} alt="" />}
-        <Field label="Image">
+        <Field label="Painting">
           <select value={w.mediaId} onChange={(e) => onChange(updateWork(m, w.id, { mediaId: e.target.value }))}>
-            {images.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            {images.map((i) => <option key={i.id} value={i.id}>{title(i)}</option>)}
           </select>
         </Field>
-        <Field label="Title"><input type="text" value={w.title} onChange={(e) => onChange(updateWork(m, w.id, { title: e.target.value }), k('title'))} /></Field>
-        <Field label="Artist"><input type="text" value={w.artist} onChange={(e) => onChange(updateWork(m, w.id, { artist: e.target.value }), k('artist'))} /></Field>
-        <Field label="Description">
-          <textarea rows={3} value={w.description ?? ''} onChange={(e) => onChange(updateWork(m, w.id, { description: e.target.value === '' ? undefined : e.target.value }), k('desc'))} />
-        </Field>
+        <div className="row">
+          <button
+            title="Swap for a random painting (unhung ones first)"
+            onClick={() => {
+              const pick = pickRandomPainting(m, Math.random, w.mediaId);
+              if (pick && pick.id !== w.mediaId) onChange(updateWork(m, w.id, { mediaId: pick.id }));
+            }}
+          >
+            Pick another
+          </button>
+          {sharedBy > 1 && <span className="hint">shared by {sharedBy} works</span>}
+        </div>
+        {media && <LabelFields museum={m} media={media} onChange={onChange} />}
         <div className="grid2">
           <Field label="Width"><NumField value={w.width} min={0} exclusiveMin onChange={(v) => onChange(setWorkWidth(m, w.id, v), k('width'))} unit="m" /></Field>
           <Field label="Centre height"><NumField value={w.centerHeight} onChange={(v) => onChange(updateWork(m, w.id, { centerHeight: v }), k('h'))} unit="m" /></Field>
@@ -124,6 +191,19 @@ export function Inspector({ museum: m, selection, onChange, onDeleted }: Props) 
     );
   }
 
+  const media = selectedMediaId ? findMedia(m, selectedMediaId) : undefined;
+  if (media?.kind === 'image') {
+    const n = hungCount(m, media.id);
+    return (
+      <section className="panel">
+        <h3>Painting <span className="muted">{media.width}×{media.height} px</span></h3>
+        <img className="inspector-thumb" src={`./museum/${media.file}`} alt="" />
+        <LabelFields museum={m} media={media} onChange={onChange} />
+        <p className="hint">Hung {n}×. Labels belong to the painting and show wherever it hangs.</p>
+      </section>
+    );
+  }
+
   return null;
 }
 
@@ -144,6 +224,8 @@ export function SettingsPanel({ museum: m, onChange }: { museum: Museum; onChang
         <Field label="Spawn y"><NumField value={s.spawn.y} onChange={(v) => onChange(setSpawn(m, { y: v }), 's.sy')} unit="m" /></Field>
         <Field label="Facing"><NumField value={round4(s.spawn.yawDeg)} step={5} onChange={(v) => onChange(setSpawn(m, { yawDeg: v }), 's.yaw')} unit="°" /></Field>
       </div>
+      <h3 className="subhead">Default wall finish</h3>
+      <FinishFields finish={s.wallFinish} museum={m} keyPrefix="s.finish" onChange={(f, key) => onChange(updateSettings(m, { wallFinish: f }), key)} />
       <p className="hint">Facing 0° looks up the blueprint, 90° to the right.</p>
     </details>
   );

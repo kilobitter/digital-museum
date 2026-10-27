@@ -2,7 +2,7 @@ import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, 
 import type { Museum, Vec2, ZoneShape } from '../shared/museum';
 import { closestPointOnSegment, wallDirection, wallLength, workPlacement } from '../shared/geometry';
 import {
-  addRoom, addWall, addZone, coincidentEndpoints, defaultWorkWidth, findHangTarget, findWork, findZone, hangWork, moveEndpoints,
+  addRoom, addWall, addZone, coincidentEndpoints, defaultWorkWidth, findHangTarget, findWork, findZone, hangWork, moveEndpoints, pickRandomPainting,
   moveWall, moveZone, resizeCircle, resizeRect, round4, setSpawn, setWorkT, snapPoint, snapValue, updateZone, type EndpointRef,
 } from './model';
 import { hitTest, workSegment, zoneHandles } from './hit';
@@ -19,6 +19,8 @@ interface Props {
   tool: Tool;
   selection: Selection;
   selectedMediaId: string | null;
+  /** Hang a randomly chosen painting on each click instead of the selected one. */
+  randomHang: boolean;
   /** Audio media to give new zones (selected in the library, or the first one). */
   audioMediaId: string | null;
   onSelect(s: Selection): void;
@@ -284,8 +286,16 @@ export function Canvas(p: Props) {
         p.onInteraction(true);
         break;
       case 'work': {
-        if (!p.selectedMediaId) {
-          p.onNotice('Select an image in the media library first.');
+        let mediaId = p.selectedMediaId;
+        if (p.randomHang) {
+          const pick = pickRandomPainting(m, Math.random);
+          if (!pick) {
+            p.onNotice('Add a painting to the media library first.');
+            return;
+          }
+          mediaId = pick.id;
+        } else if (!mediaId) {
+          p.onNotice('Select a painting in the media library first, or switch on Random painting.');
           return;
         }
         const target = findHangTarget(m, pt, Math.max(0.4, tol));
@@ -293,7 +303,7 @@ export function Canvas(p: Props) {
           p.onNotice('Click close to a wall face to hang the work.');
           return;
         }
-        const r = hangWork(m, p.selectedMediaId, { ...target, t: round4(snapValue(target.t, 0.05)) });
+        const r = hangWork(m, mediaId, { ...target, t: round4(snapValue(target.t, 0.05)) });
         if (r) {
           p.onChange(r.museum);
           p.onSelect({ type: 'work', id: r.id });
@@ -455,7 +465,8 @@ export function Canvas(p: Props) {
   const th = m.settings.wallThickness;
   const selWall = selection?.type === 'wall' ? m.walls.find((w) => w.id === selection.id) : undefined;
   const selZone = selection?.type === 'zone' ? findZone(m, selection.id) : undefined;
-  const ghost = tool === 'work' && cursor && p.selectedMediaId ? findHangTarget(m, cursor, Math.max(0.4, tol)) : null;
+  const ghostMediaId = p.randomHang ? m.media.find((x) => x.kind === 'image')?.id ?? null : p.selectedMediaId;
+  const ghost = tool === 'work' && cursor && ghostMediaId ? findHangTarget(m, cursor, Math.max(0.4, tol)) : null;
 
   const shapeEl = (shape: ZoneShape, cls: string, key?: string) =>
     shape.kind === 'rect' ? (
@@ -524,7 +535,7 @@ export function Canvas(p: Props) {
 
         {m.walls.map((w) => (
           <g key={w.id}>
-            <line className={selection?.type === 'wall' && selection.id === w.id ? 'wall selected' : 'wall'} x1={w.a.x} y1={w.a.y} x2={w.b.x} y2={w.b.y} strokeWidth={th} />
+            <line className={'wall' + (w.finish ? ' custom' : '') + (selection?.type === 'wall' && selection.id === w.id ? ' selected' : '')} x1={w.a.x} y1={w.a.y} x2={w.b.x} y2={w.b.y} strokeWidth={th} />
           </g>
         ))}
         {m.walls.map((w) =>
@@ -586,7 +597,7 @@ export function Canvas(p: Props) {
           const wall = m.walls.find((w) => w.id === ghost.wallId)!;
           const width = defaultWorkWidth(wallLength(wall));
           const seg = workSegment(
-            { ...m, works: [{ id: '_', mediaId: p.selectedMediaId!, wallId: wall.id, side: ghost.side, t: ghost.t, centerHeight: 1.5, width, title: '', artist: '' }] },
+            { ...m, works: [{ id: '_', mediaId: ghostMediaId!, wallId: wall.id, side: ghost.side, t: ghost.t, centerHeight: 1.5, width }] },
             '_',
           );
           if (!seg) return null;
