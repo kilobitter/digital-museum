@@ -2,9 +2,11 @@ import * as THREE from 'three';
 import { parseMuseum } from '../shared/validate';
 import type { Museum } from '../shared/museum';
 import { ZoneAudio } from './audio';
+import { createDebugOverlay, debugEnabled } from './debug';
 import { DesktopControls } from './desktop';
 import { Player } from './player';
-import { buildMuseumScene, usedTextureIds } from './scene';
+import { buildMuseumScene } from './scene';
+import { PaintingStreamer } from './streamer';
 import { hideOverlay, setControlsHint, showError, showLoading, showStart, toast } from './ui';
 import { XRLocomotion } from './xr';
 
@@ -70,20 +72,29 @@ async function main(): Promise<void> {
   const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 200);
 
   const audio = new ZoneAudio();
-  const total = museum.works.length + museum.zones.length + usedTextureIds(museum).length;
-  let done = 0;
-  const progress = () => showLoading(`Loading media ${Math.min(++done, total)} / ${total}…`);
-  showLoading(`Loading media 0 / ${total}…`);
-
-  const [built, audioWarnings] = await Promise.all([
-    buildMuseumScene(museum, urlFor, Math.min(4, renderer.capabilities.getMaxAnisotropy()), progress),
-    audio.load(museum, urlFor, progress),
-  ]);
+  audio.init(museum, urlFor);
+  showLoading('Loading walls…');
+  const built = await buildMuseumScene(
+    museum,
+    urlFor,
+    Math.min(4, renderer.capabilities.getMaxAnisotropy()),
+    () => {},
+  );
   scene.add(built.group);
-  const warnings = [...built.warnings, ...audioWarnings];
+  const streamer = new PaintingStreamer(built.group, built.slots, urlFor, Math.min(4, renderer.capabilities.getMaxAnisotropy()));
 
   const player = new Player(camera, museum, built.bounds);
   scene.add(player.rig);
+
+  // Only what is needed around the spawn is loaded before the start screen; the rest streams while walking.
+  {
+    const head = player.headPlan();
+    showLoading('Loading paintings…');
+    await Promise.all([
+      streamer.prime(head, (d, t) => showLoading(`Loading paintings ${d} / ${t}…`)),
+      audio.prime(head),
+    ]);
+  }
   const desktop = new DesktopControls(player, renderer.domElement);
   const xr = new XRLocomotion(renderer, scene, player, museum);
 
@@ -123,10 +134,12 @@ async function main(): Promise<void> {
     }
   }
 
+  const allWarnings = () => [...built.warnings, ...streamer.warnings, ...audio.warnings];
+
   function showStartScreen(message?: string): void {
     showStart({
       name: museum.name,
-      warnings,
+      warnings: allWarnings(),
       xrSupported: supported,
       message,
       onVR: () => void enterVR(),
@@ -139,6 +152,16 @@ async function main(): Promise<void> {
   }
   showStartScreen();
 
+  const debugTick = debugEnabled()
+    ? createDebugOverlay({
+        renderer,
+        residentPaintings: () => streamer.residentCount,
+        totalPaintings: built.slots.length,
+        decodedAudio: () => audio.decodedCount,
+        totalZones: museum.zones.length,
+      })
+    : null;
+
   let last = performance.now();
   renderer.setAnimationLoop((time) => {
     const dt = Math.min(0.1, Math.max(0, (time - last) / 1000));
@@ -146,14 +169,18 @@ async function main(): Promise<void> {
     try {
       if (renderer.xr.isPresenting) xr.update(dt, time / 1000);
       else desktop.update(dt);
-      audio.update(player.headPlan());
+      const head = player.headPlan();
+      streamer.update(head);
+      audio.update(head);
     } catch (e) {
       console.error('[museum] frame error', e);
     }
     renderer.render(scene, camera);
+    debugTick?.();
   });
 
-  if (warnings.length) toast(`${warnings.length} media file(s) failed to load`, 4000);
+  const initial = allWarnings().length;
+  if (initial) toast(`${initial} media file(s) failed to load`, 4000);
 }
 
 main().catch((e) => {

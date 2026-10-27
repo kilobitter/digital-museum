@@ -149,3 +149,6 @@ button.active { background: var(--accent-soft); border-color: var(--accent); col
 .card-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-meta { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; gap: 4px; }
 .card-warn { color: var(--danger); font-size: 10px; }
+
+.lib-search { width: 190px; font-size: 12px; padding: 2px 6px; }
+.lib-filter { font-size: 12px; padding: 2px 4px; }

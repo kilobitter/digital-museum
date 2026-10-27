@@ -171,6 +171,56 @@ export function pickRandomPainting(m: Museum, rng: () => number, exclude?: strin
   return pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
 }
 
+/**
+ * Evenly spaced centre positions (t, metres from wall point `a`) for works of `width` along a face of
+ * `length`, with a gap of at least `gap` between works and at both ends. As many as fit; the leftover
+ * is spread evenly. Empty when not even one fits.
+ */
+export function fillLayout(length: number, width: number, gap: number): number[] {
+  if (!(length > 0) || !(width > 0) || !(gap >= 0)) return [];
+  const n = Math.floor((length - gap + 1e-9) / (width + gap));
+  if (n < 1) return [];
+  const space = (length - n * width) / (n + 1);
+  return Array.from({ length: n }, (_, i) => round4(space * (i + 1) + width * i + width / 2));
+}
+
+export interface FillOptions {
+  side: WallSide;
+  width: number;
+  gap: number;
+  centerHeight: number;
+}
+
+export type FillResult = { ok: true; museum: Museum; count: number } | { ok: false; reason: string };
+
+/**
+ * Hang random paintings along one face of a wall. Refuses when that face already has works (it never
+ * mixes with existing ones). Paintings are picked with the usual random rule (unhung first, then any),
+ * never the same one twice in a row when avoidable. The result is a single new Museum value, i.e. one undo step.
+ */
+export function fillWall(m: Museum, wallId: string, opts: FillOptions, rng: () => number): FillResult {
+  const wall = findWall(m, wallId);
+  if (!wall) return { ok: false, reason: 'Wall not found.' };
+  if (m.works.some((w) => w.wallId === wallId && w.side === opts.side)) return { ok: false, reason: 'This face already has works. Remove them first.' };
+  if (!m.media.some((x) => x.kind === 'image')) return { ok: false, reason: 'No paintings in the library.' };
+  const ts = fillLayout(wallLength(wall), opts.width, opts.gap);
+  if (ts.length === 0) return { ok: false, reason: 'Not even one painting fits with this width and gap.' };
+  let cur = m;
+  const taken = new Set(m.works.map((w) => w.id));
+  let prev: string | undefined;
+  const added: Work[] = [];
+  for (const t of ts) {
+    const pick = pickRandomPainting(cur, rng, prev);
+    if (!pick) break;
+    const id = newId('work', taken);
+    taken.add(id);
+    added.push({ id, mediaId: pick.id, wallId, side: opts.side, t, centerHeight: opts.centerHeight, width: opts.width });
+    prev = pick.id;
+    cur = { ...cur, works: [...cur.works, added[added.length - 1]] };
+  }
+  return { ok: true, museum: cur, count: added.length };
+}
+
 export function updateWork(m: Museum, id: string, patch: Partial<Omit<Work, 'id'>>): Museum {
   return { ...m, works: m.works.map((w) => (w.id === id ? { ...w, ...patch } : w)) };
 }

@@ -5,7 +5,7 @@ import { wallNormal } from '../shared/geometry';
 import {
   addMedia, addRoom, addWall, addZone, clampT, coincidentEndpoints, computeWarnings, deleteWall, findHangTarget, flipWork, hangWork,
   mediaUsage, moveEndpoints, removeMedia, resizeRect, setWorkT, updateWork, updateZone, snapValue, moveWall,
-  pickRandomPainting, updateMedia, setWallFinish, updateSettings, hungCount,
+  pickRandomPainting, updateMedia, setWallFinish, updateSettings, hungCount, fillLayout, fillWall,
 } from './model';
 import { canRedo, canUndo, commitFrom, createHistory, push, redo, replace, undo } from './history';
 import { hitTest } from './hit';
@@ -336,5 +336,79 @@ describe('media labels and wall finishes', () => {
     const w = addWall(defaultMuseum(), { x: 0, y: 0 }, { x: 4, y: 0 })!;
     const m = setWallFinish(w.museum, w.id, { textureId: 'gone', color: '#ffffff', tileSize: 1 });
     expect(computeWarnings(m).map((x) => x.kind)).toContain('texture-missing');
+  });
+});
+
+describe('fillLayout', () => {
+  it('fits as many as possible with equal gaps, including at the ends', () => {
+    // 10 m, 1.2 m wide, 0.5 m gap: n*1.2 + (n+1)*0.5 <= 10 -> n = 5
+    const ts = fillLayout(10, 1.2, 0.5);
+    expect(ts).toHaveLength(5);
+    const space = (10 - 5 * 1.2) / 6;
+    expect(ts[0]).toBeCloseTo(space + 0.6, 3);
+    for (let i = 1; i < ts.length; i++) expect(ts[i] - ts[i - 1]).toBeCloseTo(1.2 + space, 3);
+    expect(10 - ts[4] - 0.6).toBeCloseTo(space, 3);
+    expect(space).toBeGreaterThanOrEqual(0.5);
+  });
+  it('exact fit and one-painting cases', () => {
+    expect(fillLayout(3.4, 1.2, 1)).toEqual([1.7]); // 1.2 + 2*1 = 3.2 <= 3.4, centred
+    expect(fillLayout(3.2, 1.2, 1)).toEqual([1.6]);
+    expect(fillLayout(4.4, 1.2, 1)).toHaveLength(1); // 2 need 2.4+3 = 5.4
+    expect(fillLayout(5.4, 1.2, 1)).toHaveLength(2);
+  });
+  it('is empty when nothing fits or inputs are invalid', () => {
+    expect(fillLayout(3.1, 1.2, 1)).toEqual([]);
+    expect(fillLayout(0, 1, 0.5)).toEqual([]);
+    expect(fillLayout(5, 0, 0.5)).toEqual([]);
+    expect(fillLayout(5, 1, -1)).toEqual([]);
+  });
+  it('zero gap tiles the wall edge to edge', () => {
+    expect(fillLayout(4, 1, 0)).toEqual([0.5, 1.5, 2.5, 3.5]);
+  });
+});
+
+describe('fillWall', () => {
+  const base = () => {
+    let { museum } = room(); // 4 m wall 0
+    for (const n of ['a', 'b', 'c', 'd', 'e']) museum = addMedia(museum, { kind: 'image', file: `media/${n}.png`, name: `${n}.png`, width: 100, height: 100 }).museum;
+    return museum;
+  };
+  const opts = { side: 1 as const, width: 0.6, gap: 0.4, centerHeight: 1.4 };
+  const rng = () => 0.3;
+
+  it('hangs unhung paintings first, as one new museum value, validly', () => {
+    const m = base();
+    const r = fillWall(m, m.walls[0].id, opts, rng);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.count).toBe(3); // 4 m: 3*0.6 + 4*0.4 = 3.4
+    expect(r.museum.works).toHaveLength(3);
+    expect(new Set(r.museum.works.map((w) => w.mediaId)).size).toBe(3); // all distinct: 5 unhung available
+    for (const w of r.museum.works) expect(w).toMatchObject({ wallId: m.walls[0].id, side: 1, width: 0.6, centerHeight: 1.4 });
+    expect(new Set(r.museum.works.map((w) => w.id)).size).toBe(3);
+    expect(parseMuseum(r.museum).ok).toBe(true);
+    expect(m.works).toHaveLength(0);
+  });
+  it('falls back to random from all when the unhung run out, avoiding adjacent repeats', () => {
+    let m = base();
+    m = { ...m, media: m.media.filter((x) => x.kind !== 'image' || x.name < 'c') }; // only a, b
+    const r = fillWall(m, m.walls[0].id, opts, rng);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.count).toBe(3);
+    const ids = r.museum.works.map((w) => w.mediaId);
+    expect(ids[0]).not.toBe(ids[1]);
+    expect(ids[1]).not.toBe(ids[2]);
+  });
+  it('refuses when the face has works, but the other face is fine', () => {
+    const m = base();
+    const first = fillWall(m, m.walls[0].id, opts, rng);
+    if (!first.ok) throw new Error(first.reason);
+    expect(fillWall(first.museum, m.walls[0].id, opts, rng).ok).toBe(false);
+    expect(fillWall(first.museum, m.walls[0].id, { ...opts, side: -1 }, rng).ok).toBe(true);
+  });
+  it('refuses with no paintings or no room', () => {
+    const m = room().museum;
+    expect(fillWall(m, m.walls[0].id, opts, rng)).toMatchObject({ ok: false });
+    const b = base();
+    expect(fillWall(b, b.walls[0].id, { ...opts, width: 5 }, rng)).toMatchObject({ ok: false });
   });
 });

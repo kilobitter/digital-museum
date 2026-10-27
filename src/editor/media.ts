@@ -1,7 +1,7 @@
 // Client-side media preparation.
-export const MAX_IMAGE_SIDE = 2048;
+export const MAX_IMAGE_SIDE = 1600;
 export const MAX_TEXTURE_SIDE = 1024;
-export const JPEG_QUALITY = 0.85;
+export const JPEG_QUALITY = 0.82;
 export const AUDIO_WARN_BYTES = 15 * 1024 * 1024;
 
 const IMAGE_EXT = /\.(jpe?g|png|webp)$/i;
@@ -9,6 +9,19 @@ const AUDIO_EXT = /\.(mp3|m4a|aac|ogg|wav)$/i;
 
 /** Filename without its extension, used as the default painting title. */
 export const titleFromFilename = (name: string) => name.replace(/\.[^./\\]+$/, '');
+
+/**
+ * Title and artist from a painting's file name: extension dropped, `_` read as a space, whitespace
+ * collapsed, then split on the first " - " (also en/em dash with spaces around it): left = artist,
+ * right = title. Without such a separator the whole name is the title. A hyphen without spaces
+ * ("Jean-Luc") never splits.
+ */
+export function parsePaintingFilename(name: string): { title: string; artist: string } {
+  const base = titleFromFilename(name).replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  const m = /^(.*?) [-\u2013\u2014] (.*)$/.exec(base);
+  if (m && m[1].trim() && m[2].trim()) return { artist: m[1].trim(), title: m[2].trim() };
+  return { title: base, artist: '' };
+}
 
 export function mediaKindOf(file: File): 'image' | 'audio' | null {
   if (IMAGE_EXT.test(file.name)) return 'image';

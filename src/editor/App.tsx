@@ -6,7 +6,8 @@ import { Canvas, type CanvasHandle } from './Canvas';
 import { Inspector, SettingsPanel } from './Inspector';
 import { Library, type Section } from './Library';
 import { isLoopbackHost, localEditorUrl } from './host';
-import { AUDIO_WARN_BYTES, MAX_TEXTURE_SIDE, mediaKindOf, prepareImage, titleFromFilename } from './media';
+import { AUDIO_WARN_BYTES, MAX_TEXTURE_SIDE, mediaKindOf, parsePaintingFilename, prepareImage } from './media';
+import { isDuplicate, runPool, summarizeUpload } from './uploadQueue';
 import {
   addMedia, computeWarnings, deleteWall, deleteWork, deleteZone, findWall, findWork, findZone, removeMedia,
 } from './model';
@@ -17,7 +18,7 @@ import { TOOLS, type Selection, type Tool } from './types';
 type Action =
   | { type: 'reset'; museum: Museum }
   | { type: 'push'; museum: Museum; key?: string }
-  | { type: 'edit'; fn: (m: Museum) => Museum; clear?: boolean }
+  | { type: 'edit'; fn: (m: Museum) => Museum; clear?: boolean; key?: string }
   | { type: 'preview'; museum: Museum }
   | { type: 'commit'; base: Museum }
   | { type: 'undo' }
@@ -28,7 +29,7 @@ function reducer(h: History<Museum>, a: Action): History<Museum> {
     case 'reset': return createHistory(a.museum);
     case 'push': return push(h, a.museum, a.key ?? null);
     case 'edit': {
-      const next = push(h, a.fn(h.present));
+      const next = push(h, a.fn(h.present), a.key ?? null);
       return a.clear ? clearHistory(next) : next;
     }
     case 'preview': return replace(h, a.museum);
@@ -36,6 +37,24 @@ function reducer(h: History<Museum>, a: Action): History<Museum> {
     case 'undo': return undo(h);
     case 'redo': return redo(h);
   }
+}
+
+const UPLOAD_CONCURRENCY = 3;
+const SIZES_KEY = 'museum-editor.uploadSizes';
+/** Original byte sizes of uploaded files (per browser; the museum format has no field for them), used to spot re-uploads. */
+function loadSizes(): Record<string, number> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SIZES_KEY) ?? '{}');
+    return raw && typeof raw === 'object' ? (raw as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+function saveSizes(sizes: Record<string, number>): void {
+  try {
+    const clean = Object.fromEntries(Object.entries(sizes).filter(([k]) => !k.startsWith('pending:')));
+    localStorage.setItem(SIZES_KEY, JSON.stringify(clean));
+  } catch { /* storage unavailable: duplicates then match on name only */ }
 }
 
 const isField = (t: EventTarget | null) => t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
@@ -198,46 +217,69 @@ export function App() {
   const addFiles = useCallback(
     async (files: File[], section: Section) => {
       if (!localRef.current) return;
-      let n = 0;
       const failures: string[] = [];
+      const skipped: string[] = [];
+      const queue: { file: File; kind: Section }[] = [];
+      const sizes = loadSizes();
+      // Library as it will look while the batch runs, so duplicates inside one drop are caught too.
+      const known = presentRef.current.media.map((x) => ({ name: x.name, file: x.file }));
       for (const f of files) {
         const fileKind = mediaKindOf(f);
         if (!fileKind) {
           failures.push(`${f.name}: unsupported type`);
-          continue;
-        }
-        if ((section === 'audio') !== (fileKind === 'audio')) {
+        } else if ((section === 'audio') !== (fileKind === 'audio')) {
           failures.push(`${f.name}: ${fileKind === 'audio' ? 'audio belongs in the Audio section' : 'images go into Paintings or Textures'}`);
-          continue;
+        } else if (isDuplicate(known, sizes, f)) {
+          skipped.push(f.name);
+        } else {
+          known.push({ name: f.name, file: `pending:${f.name}:${f.size}` });
+          sizes[`pending:${f.name}:${f.size}`] = f.size;
+          queue.push({ file: f, kind: section });
         }
-        const kind = section;
-        setBusy(`Uploading ${f.name} (${++n}/${files.length})…`);
-        try {
+      }
+      let added = 0;
+      const bigNames: string[] = [];
+      const results = await runPool(
+        queue,
+        UPLOAD_CONCURRENCY,
+        async ({ file: f, kind }) => {
           let item: Parameters<typeof addMedia>[1];
           if (kind === 'image' || kind === 'texture') {
             const img = await prepareImage(f, kind === 'texture' ? MAX_TEXTURE_SIDE : undefined);
             const file = await uploadMedia(f.name.replace(/\.[^.]+$/, '') + '.jpg', img.blob);
             item = { kind, file, name: f.name, width: img.width, height: img.height };
-            if (kind === 'image') item.title = titleFromFilename(f.name);
+            if (kind === 'image') {
+              const { title, artist } = parsePaintingFilename(f.name);
+              item.title = title;
+              if (artist) item.artist = artist;
+            }
           } else {
             const file = await uploadMedia(f.name, f);
             item = { kind, file, name: f.name };
           }
-          dispatch({ type: 'edit', fn: (m) => addMedia(m, item).museum });
-          if (kind === 'audio' && f.size > AUDIO_WARN_BYTES) {
-            // the reducer runs lazily; resolve the new id from the latest museum on the next tick
-            setTimeout(() => {
-              const added = presentRef.current.media.find((x) => x.file === item.file);
-              if (added) setBigAudio((s) => new Set(s).add(added.id));
-            }, 0);
-            notify(`${f.name} is ${(f.size / 1048576).toFixed(1)} MB. Large audio loads slowly on a headset.`);
-          }
-        } catch (e) {
-          failures.push(`${f.name}: ${e instanceof Error ? e.message : String(e)}`);
-        }
+          sizes[item.file] = f.size;
+          // One undo step for the whole batch (same key), and the file is recorded right away so a
+          // browser crash mid-batch loses nothing that was already uploaded.
+          dispatch({ type: 'edit', key: 'bulk-upload', fn: (m) => addMedia(m, item).museum });
+          if (kind === 'audio' && f.size > AUDIO_WARN_BYTES) bigNames.push(item.file);
+          return f.name;
+        },
+        (done, total) => setBusy(`Uploading ${done} / ${total}…`),
+      );
+      results.forEach((r, i) => {
+        if (r.ok) added++;
+        else failures.push(`${queue[i].file.name}: ${r.error instanceof Error ? r.error.message : String(r.error)}`);
+      });
+      saveSizes(sizes);
+      if (bigNames.length) {
+        // the reducer runs lazily; resolve the new ids from the latest museum on the next tick
+        setTimeout(() => {
+          const ids = presentRef.current.media.filter((x) => bigNames.includes(x.file)).map((x) => x.id);
+          setBigAudio((s) => new Set([...s, ...ids]));
+        }, 0);
       }
       setBusy(null);
-      if (failures.length) notify(failures.join(' | '));
+      if (files.length) notify(summarizeUpload(added, skipped, failures));
     },
     [notify],
   );

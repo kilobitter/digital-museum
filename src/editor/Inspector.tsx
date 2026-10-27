@@ -1,7 +1,8 @@
-import type { MediaItem, Museum, WallFinish } from '../shared/museum';
+import { useState } from 'react';
+import type { MediaItem, Museum, Wall, WallFinish, WallSide } from '../shared/museum';
 import { wallLength } from '../shared/geometry';
 import {
-  coincidentEndpoints, deleteWall, deleteWork, deleteZone, findMedia, findWall, findWork, findZone, flipWork, hungCount, imageHeight,
+  coincidentEndpoints, deleteWall, fillLayout, fillWall, deleteWork, deleteZone, findMedia, findWall, findWork, findZone, flipWork, hungCount, imageHeight,
   moveEndpoints, pickRandomPainting, round4, setSpawn, setWallFinish, setWorkT, setWorkWidth, updateMedia, updateSettings, updateWork,
   updateZone,
 } from './model';
@@ -62,6 +63,47 @@ function LabelFields({ museum: m, media, onChange }: { museum: Museum; media: Me
   );
 }
 
+/** "Fill face with random paintings": one undo step; refuses when the face already has works. */
+function FillWallPanel({ museum: m, wall, onChange }: { museum: Museum; wall: Wall; onChange: Props['onChange'] }) {
+  const [side, setSide] = useState<WallSide>(1);
+  const [width, setWidth] = useState(1.2);
+  const [gap, setGap] = useState(0.6);
+  const [height, setHeight] = useState(1.5);
+  const [msg, setMsg] = useState<string | null>(null);
+  const fits = fillLayout(wallLength(wall), width, gap).length;
+  const existing = m.works.filter((w) => w.wallId === wall.id && w.side === side).length;
+  return (
+    <details className="finish">
+      <summary>Fill face with random paintings</summary>
+      <div className="grid2">
+        <Field label="Face">
+          <select value={side} onChange={(e) => { setSide(Number(e.target.value) as WallSide); setMsg(null); }}>
+            <option value={1}>Side +</option>
+            <option value={-1}>Side −</option>
+          </select>
+        </Field>
+        <Field label="Painting width"><NumField value={width} min={0} exclusiveMin onChange={setWidth} unit="m" /></Field>
+        <Field label="Gap"><NumField value={gap} min={0} onChange={setGap} unit="m" /></Field>
+        <Field label="Centre height"><NumField value={height} onChange={setHeight} unit="m" /></Field>
+      </div>
+      <p className="hint">
+        {existing > 0 ? `This face already has ${existing} work(s): remove them first.` : `${fits} painting${fits === 1 ? '' : 's'} fit. Unhung paintings are used first.`}
+      </p>
+      <button
+        disabled={existing > 0 || fits === 0}
+        onClick={() => {
+          const r = fillWall(m, wall.id, { side, width, gap, centerHeight: height }, Math.random);
+          if (r.ok) { onChange(r.museum); setMsg(`Hung ${r.count} painting${r.count === 1 ? '' : 's'}.`); }
+          else setMsg(r.reason);
+        }}
+      >
+        Fill face
+      </button>
+      {msg && <p className="hint">{msg}</p>}
+    </details>
+  );
+}
+
 export function Inspector({ museum: m, selection, selectedMediaId, onChange, onDeleted }: Props) {
   const del = (fn: (m: Museum) => Museum) => (
     <button
@@ -103,6 +145,7 @@ export function Inspector({ museum: m, selection, selectedMediaId, onChange, onD
           </label>
           {w.finish && <FinishFields finish={w.finish} museum={m} keyPrefix={`${w.id}.finish`} onChange={(f, key) => onChange(setWallFinish(m, w.id, f), key)} />}
         </div>
+        <FillWallPanel museum={m} wall={w} onChange={onChange} />
         {del((x) => deleteWall(x, w.id))}
       </section>
     );

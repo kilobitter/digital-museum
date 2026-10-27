@@ -1,30 +1,38 @@
-// Builds the static museum geometry: floor, ceiling, walls, framed works and labels.
+// Builds the static museum geometry: floor, ceiling, walls (merged per material), frames and
+// neutral placeholder panels (merged into one mesh each). Paintings are streamed in by PaintingStreamer.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { wallDirection, wallLength, workPlacement } from '../shared/geometry';
 import type { MediaItem, Museum, WallFinish } from '../shared/museum';
 import { computeFloorBounds, type Bounds } from './collision';
+import { MAX_WALL_TEXTURE, loadTexture } from './textures';
 import { wallGeometry } from './wallGeometry';
 
-const MAX_TEXTURE = 2048; // paintings
-const MAX_WALL_TEXTURE = 1024; // wall textures (tiled, so smaller is fine)
-const FRAME_DEPTH = 0.01; // frame back is flush with the wall face
-const WORK_OFFSET = FRAME_DEPTH + 0.002; // image/label sit clearly in front of the frame front (~1.2 cm off the wall)
+export const FRAME_DEPTH = 0.01; // frame back is flush with the wall face
+export const WORK_OFFSET = FRAME_DEPTH + 0.002; // image/label sit clearly in front of the frame front (~1.2 cm off the wall)
+const PANEL_OFFSET = FRAME_DEPTH + 0.0005; // neutral panel, just behind the image
 const FLOOR_MARGIN = 2;
+
+/** Everything the streamer needs to show one work. */
+export interface PaintingSlot {
+  id: string;
+  media: MediaItem;
+  /** Displayed size, metres. */
+  w: number;
+  h: number;
+  /** World position of the work centre and rotation.y of its plane (faces +z locally). */
+  position: THREE.Vector3;
+  rotationY: number;
+  /** Plan coordinates of the centre (for distance tests). */
+  x: number;
+  y: number;
+}
 
 export interface BuiltScene {
   group: THREE.Group;
   bounds: Bounds;
   warnings: string[];
-}
-
-function loadImage(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.decoding = 'async';
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('image failed to load'));
-    img.src = url;
-  });
+  slots: PaintingSlot[];
 }
 
 /** Wall finish in effect for a wall: its own, else the museum default. */
@@ -40,92 +48,11 @@ export function usedTextureIds(museum: Museum): string[] {
   return [...ids];
 }
 
-/** Load an image as a texture, downscaled so no side exceeds `max`. Mipmaps on. */
-async function loadTexture(url: string, anisotropy: number, max = MAX_TEXTURE, repeat = false): Promise<THREE.Texture> {
-  const img = await loadImage(url);
-  const w = img.naturalWidth;
-  const h = img.naturalHeight;
-  if (!w || !h) throw new Error('image has no size');
-  let source: TexImageSource = img;
-  const scale = Math.min(1, max / Math.max(w, h));
-  if (scale < 1) {
-    const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(w * scale));
-    c.height = Math.max(1, Math.round(h * scale));
-    c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
-    source = c;
-  }
-  const tex = new THREE.Texture(source as HTMLImageElement);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.generateMipmaps = true;
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
-  tex.magFilter = THREE.LinearFilter;
-  tex.anisotropy = anisotropy;
-  if (repeat) tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.needsUpdate = true;
-  return tex;
-}
-
-function placeholderTexture(): THREE.Texture {
-  const c = document.createElement('canvas');
-  c.width = 256; c.height = 256;
-  const g = c.getContext('2d')!;
-  g.fillStyle = '#d8d8d8'; g.fillRect(0, 0, 256, 256);
-  g.strokeStyle = '#999'; g.lineWidth = 6;
-  g.beginPath(); g.moveTo(0, 0); g.lineTo(256, 256); g.moveTo(256, 0); g.lineTo(0, 256); g.stroke();
-  g.fillStyle = '#666'; g.font = '24px sans-serif'; g.textAlign = 'center';
-  g.fillText('image missing', 128, 128);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
-function wrap(g: CanvasRenderingContext2D, text: string, maxW: number): string[] {
-  const lines: string[] = [];
-  for (const para of text.split('\n')) {
-    let line = '';
-    for (const word of para.split(/\s+/).filter(Boolean)) {
-      const test = line ? `${line} ${word}` : word;
-      if (g.measureText(test).width > maxW && line) { lines.push(line); line = word; } else line = test;
-    }
-    lines.push(line);
-  }
-  return lines;
-}
-
-const LABEL_W = 0.5; // metres
-const LABEL_H = 0.3;
-
-function labelTexture(media: MediaItem, anisotropy: number): THREE.CanvasTexture {
-  const W = 512;
-  const H = Math.round((W * LABEL_H) / LABEL_W);
-  const c = document.createElement('canvas');
-  c.width = W; c.height = H;
-  const g = c.getContext('2d')!;
-  g.fillStyle = '#222';
-  g.textBaseline = 'alphabetic';
-  const out: { text: string; font: string; color: string; lh: number }[] = [];
-  const add = (text: string, font: string, color: string, lh: number, maxLines: number) => {
-    if (!text) return;
-    g.font = font;
-    const ls = wrap(g, text, W - 16);
-    for (const l of ls.slice(0, maxLines)) out.push({ text: l, font, color, lh });
-  };
-  add(media.title ?? '', '600 40px system-ui, sans-serif', '#111', 48, 2);
-  add(media.artist ?? '', '32px system-ui, sans-serif', '#444', 40, 1);
-  add(media.description ?? '', '26px system-ui, sans-serif', '#666', 32, 4);
-  // bottom-anchored so the label hugs the bottom edge of the work
-  let y = H - 8 - out.reduce((s, l) => s + l.lh, 0);
-  y = Math.max(y, 0);
-  for (const l of out) {
-    y += l.lh;
-    g.font = l.font; g.fillStyle = l.color;
-    g.fillText(l.text, 8, y - l.lh * 0.25, W - 16);
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = anisotropy;
-  return t;
+function merged(geos: THREE.BufferGeometry[]): THREE.BufferGeometry | null {
+  if (geos.length === 0) return null;
+  const g = mergeGeometries(geos, false);
+  for (const x of geos) x.dispose();
+  return g;
 }
 
 export async function buildMuseumScene(
@@ -180,75 +107,66 @@ export async function buildMuseumScene(
     }),
   );
 
-  // Walls with an identical finish (texture + colour) share one material; tileSize lives in the UVs.
-  const wallMats = new Map<string, THREE.MeshLambertMaterial>();
-  const wallMaterial = (f: WallFinish) => {
-    const tex = f.textureId ? wallTextures.get(f.textureId) ?? null : null;
-    const key = `${tex ? f.textureId : ''}|${f.color.toLowerCase()}`;
-    let m = wallMats.get(key);
-    if (!m) {
-      m = new THREE.MeshLambertMaterial({ color: new THREE.Color(f.color), map: tex });
-      wallMats.set(key, m);
-    }
-    return m;
-  };
+  // Walls: one merged mesh per material (identical texture + colour); tileSize lives in the UVs.
+  const wallMats = new Map<string, { mat: THREE.MeshLambertMaterial; geos: THREE.BufferGeometry[] }>();
+  const m4 = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
   for (const w of museum.walls) {
     const len = wallLength(w);
     const d = wallDirection(w);
     const f = effectiveFinish(museum, w);
+    const tex = f.textureId ? wallTextures.get(f.textureId) ?? null : null;
+    const key = `${tex ? f.textureId : ''}|${f.color.toLowerCase()}`;
+    let entry = wallMats.get(key);
+    if (!entry) {
+      entry = { mat: new THREE.MeshLambertMaterial({ color: new THREE.Color(f.color), map: tex }), geos: [] };
+      wallMats.set(key, entry);
+    }
     // +T so corner joints have no notch (walls are centred on their segment)
-    const mesh = new THREE.Mesh(wallGeometry(len + T, H, T, f.tileSize), wallMaterial(f));
-    mesh.position.set((w.a.x + w.b.x) / 2, H / 2, (w.a.y + w.b.y) / 2);
-    mesh.rotation.y = -Math.atan2(d.y, d.x);
-    group.add(mesh);
+    const geo = wallGeometry(len + T, H, T, f.tileSize);
+    q.setFromAxisAngle(up, -Math.atan2(d.y, d.x));
+    m4.compose(new THREE.Vector3((w.a.x + w.b.x) / 2, H / 2, (w.a.y + w.b.y) / 2), q, new THREE.Vector3(1, 1, 1));
+    geo.applyMatrix4(m4);
+    entry.geos.push(geo);
+  }
+  for (const { mat, geos } of wallMats.values()) {
+    const g = merged(geos);
+    if (g) group.add(new THREE.Mesh(g, mat));
   }
 
-  const frameMat = new THREE.MeshBasicMaterial({ color: 0x1a1a1a });
+  // Frames and placeholder panels of every work: one mesh each, always visible.
   const wallById = new Map(museum.walls.map((w) => [w.id, w]));
-  let placeholder: THREE.Texture | null = null;
+  const slots: PaintingSlot[] = [];
+  const frameGeos: THREE.BufferGeometry[] = [];
+  const panelGeos: THREE.BufferGeometry[] = [];
+  const one = new THREE.Vector3(1, 1, 1);
+  for (const work of museum.works) {
+    const wall = wallById.get(work.wallId);
+    const media = mediaById.get(work.mediaId);
+    if (!wall || !media) continue;
+    const aspect = (media.width ?? 1) / (media.height ?? 1);
+    const w = work.width;
+    const h = w / aspect;
+    const { center, normal } = workPlacement(wall, work, T);
+    const rotationY = Math.atan2(normal.x, normal.y); // plane faces +z by default
+    const position = new THREE.Vector3(center.x, work.centerHeight, center.y);
+    q.setFromAxisAngle(up, rotationY);
+    m4.compose(position, q, one);
+    const frame = new THREE.BoxGeometry(w + 0.04, h + 0.04, FRAME_DEPTH);
+    frame.translate(0, 0, FRAME_DEPTH / 2);
+    frame.applyMatrix4(m4);
+    frameGeos.push(frame);
+    const panel = new THREE.PlaneGeometry(w, h);
+    panel.translate(0, 0, PANEL_OFFSET);
+    panel.applyMatrix4(m4);
+    panelGeos.push(panel);
+    slots.push({ id: work.id, media, w, h, position, rotationY, x: center.x, y: center.y });
+  }
+  const frames = merged(frameGeos);
+  if (frames) group.add(new THREE.Mesh(frames, new THREE.MeshBasicMaterial({ color: 0x1a1a1a })));
+  const panels = merged(panelGeos);
+  if (panels) group.add(new THREE.Mesh(panels, new THREE.MeshBasicMaterial({ color: 0xd9d9d9 })));
 
-  await Promise.all(
-    museum.works.map(async (work) => {
-      const wall = wallById.get(work.wallId);
-      const media = mediaById.get(work.mediaId);
-      if (!wall || !media) { onProgress?.(); return; }
-      const aspect = (media.width ?? 1) / (media.height ?? 1);
-      const w = work.width;
-      const h = w / aspect;
-
-      let tex: THREE.Texture;
-      try {
-        tex = await loadTexture(urlFor(media.file), anisotropy);
-      } catch (e) {
-        const msg = `image '${media.file}' for work '${media.title || work.id}' could not be loaded: ${String(e)}`;
-        console.warn('[museum]', msg);
-        warnings.push(msg);
-        tex = placeholder ??= placeholderTexture();
-      }
-
-      const { center, normal } = workPlacement(wall, work, T);
-      const g = new THREE.Group();
-      g.position.set(center.x, work.centerHeight, center.y);
-      g.rotation.y = Math.atan2(normal.x, normal.y); // plane faces +z by default
-      const img = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));
-      img.position.z = WORK_OFFSET;
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(w + 0.04, h + 0.04, FRAME_DEPTH), frameMat);
-      frame.position.z = FRAME_DEPTH / 2;
-      g.add(frame, img);
-
-      if (media.title || media.artist || media.description) {
-        const label = new THREE.Mesh(
-          new THREE.PlaneGeometry(LABEL_W, LABEL_H),
-          new THREE.MeshBasicMaterial({ map: labelTexture(media, anisotropy), transparent: true }),
-        );
-        // local +x is the viewer's right while facing the wall (plane faces +z)
-        label.position.set(w / 2 + 0.1 + LABEL_W / 2, -h / 2 + LABEL_H / 2, WORK_OFFSET);
-        g.add(label);
-      }
-      group.add(g);
-      onProgress?.();
-    }),
-  );
-
-  return { group, bounds, warnings };
+  return { group, bounds, warnings, slots };
 }
