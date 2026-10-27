@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Museum</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #111; overflow: hidden; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; color: #eee; }
+      canvas { display: block; }
+      #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(12,12,14,0.92); text-align: center; padding: 24px; box-sizing: border-box; z-index: 10; }
+      #overlay[hidden] { display: none; }
+      #panel { max-width: 560px; }
+      #panel h1 { font-weight: 500; font-size: 28px; margin: 0 0 12px; }
+      #panel p { margin: 8px 0; line-height: 1.45; color: #bbb; }
+      #panel .btns { margin-top: 24px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+      #panel button { font: inherit; font-size: 18px; padding: 12px 22px; border-radius: 8px; border: 1px solid #666; background: #222; color: #fff; cursor: pointer; }
+      #panel button.primary { background: #fff; color: #111; border-color: #fff; }
+      #panel button:hover { filter: brightness(1.15); }
+      #panel ul { text-align: left; color: #f0a0a0; font-family: ui-monospace, Menlo, monospace; font-size: 13px; max-height: 50vh; overflow: auto; padding-left: 20px; }
+      #panel.error h1 { color: #ff8a8a; }
+      #toast { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); background: rgba(0,0,0,0.75); color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 16px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 5; }
+      #toast.show { opacity: 1; }
+      #controls { position: fixed; left: 12px; bottom: 10px; font-size: 13px; color: rgba(60,60,60,0.8); pointer-events: none; z-index: 4; }
+    </style>
+  </head>
+  <body>
+    <div id="overlay"><div id="panel"><h1>Loading…</h1></div></div>
+    <div id="toast"></div>
+    <div id="controls" hidden></div>
+    <script type="module" src="/src/viewer/main.ts"></script>
+  </body>
+</html>

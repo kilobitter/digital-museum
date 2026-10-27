@@ -1,0 +1,4 @@
+?? docs/agent-work/vr-museum/SPEC.md
+?? docs/agent-work/vr-museum/baseline-T1.txt
+?? docs/agent-work/vr-museum/briefs/T1.md
+?? src/shared/museum.ts

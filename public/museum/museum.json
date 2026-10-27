@@ -1,0 +1,268 @@
+{
+  "version": 1,
+  "name": "Sample Museum",
+  "settings": {
+    "wallHeight": 3,
+    "wallThickness": 0.2,
+    "gridSize": 0.5,
+    "ceiling": true,
+    "spawn": {
+      "x": 4,
+      "y": 5,
+      "yawDeg": 0
+    }
+  },
+  "walls": [
+    {
+      "id": "wA-top",
+      "a": {
+        "x": 0,
+        "y": 0
+      },
+      "b": {
+        "x": 8,
+        "y": 0
+      }
+    },
+    {
+      "id": "wA-bottom",
+      "a": {
+        "x": 8,
+        "y": 6
+      },
+      "b": {
+        "x": 0,
+        "y": 6
+      }
+    },
+    {
+      "id": "wA-left",
+      "a": {
+        "x": 0,
+        "y": 6
+      },
+      "b": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "wD-north",
+      "a": {
+        "x": 8,
+        "y": 0
+      },
+      "b": {
+        "x": 8,
+        "y": 2
+      }
+    },
+    {
+      "id": "wD-south",
+      "a": {
+        "x": 8,
+        "y": 6
+      },
+      "b": {
+        "x": 8,
+        "y": 4
+      }
+    },
+    {
+      "id": "wB-top",
+      "a": {
+        "x": 8,
+        "y": 0
+      },
+      "b": {
+        "x": 16,
+        "y": 0
+      }
+    },
+    {
+      "id": "wB-bottom",
+      "a": {
+        "x": 16,
+        "y": 6
+      },
+      "b": {
+        "x": 8,
+        "y": 6
+      }
+    },
+    {
+      "id": "wB-right",
+      "a": {
+        "x": 16,
+        "y": 0
+      },
+      "b": {
+        "x": 16,
+        "y": 6
+      }
+    }
+  ],
+  "works": [
+    {
+      "id": "wk1",
+      "mediaId": "img1",
+      "wallId": "wA-top",
+      "side": 1,
+      "t": 4,
+      "centerHeight": 1.5,
+      "width": 2.4,
+      "title": "Sunrise",
+      "artist": "A. Student",
+      "description": "Gradient study, 2026"
+    },
+    {
+      "id": "wk2",
+      "mediaId": "img2",
+      "wallId": "wA-left",
+      "side": 1,
+      "t": 3,
+      "centerHeight": 1.5,
+      "width": 1.2,
+      "title": "Forest",
+      "artist": "B. Student"
+    },
+    {
+      "id": "wk3",
+      "mediaId": "img3",
+      "wallId": "wA-bottom",
+      "side": 1,
+      "t": 4,
+      "centerHeight": 1.5,
+      "width": 1.5,
+      "title": "Tide",
+      "artist": "C. Student",
+      "description": "Square format."
+    },
+    {
+      "id": "wk4",
+      "mediaId": "img4",
+      "wallId": "wD-south",
+      "side": -1,
+      "t": 1,
+      "centerHeight": 1.5,
+      "width": 1.2,
+      "title": "Ember",
+      "artist": "D. Student"
+    },
+    {
+      "id": "wk5",
+      "mediaId": "img5",
+      "wallId": "wB-top",
+      "side": 1,
+      "t": 4,
+      "centerHeight": 1.5,
+      "width": 2.8,
+      "title": "Dusk",
+      "artist": "E. Student",
+      "description": "Panoramic."
+    },
+    {
+      "id": "wk6",
+      "mediaId": "img6",
+      "wallId": "wB-right",
+      "side": 1,
+      "t": 3,
+      "centerHeight": 1.5,
+      "width": 1.3,
+      "title": "Meadow",
+      "artist": "F. Student",
+      "description": "Hangs on the far wall of room B."
+    }
+  ],
+  "zones": [
+    {
+      "id": "z1",
+      "name": "Hum (room A)",
+      "mediaId": "aud1",
+      "shape": {
+        "kind": "rect",
+        "x": 1.5,
+        "y": 1.5,
+        "w": 4,
+        "h": 3
+      },
+      "volume": 0.8,
+      "fade": 1
+    },
+    {
+      "id": "z2",
+      "name": "Chime (doorway and room B)",
+      "mediaId": "aud2",
+      "shape": {
+        "kind": "circle",
+        "cx": 11,
+        "cy": 3,
+        "r": 3.5
+      },
+      "volume": 0.6,
+      "fade": 1.5
+    }
+  ],
+  "media": [
+    {
+      "id": "img1",
+      "kind": "image",
+      "file": "media/sunrise.png",
+      "name": "Sunrise.png",
+      "width": 800,
+      "height": 500
+    },
+    {
+      "id": "img2",
+      "kind": "image",
+      "file": "media/forest.png",
+      "name": "Forest.png",
+      "width": 500,
+      "height": 700
+    },
+    {
+      "id": "img3",
+      "kind": "image",
+      "file": "media/tide.png",
+      "name": "Tide.png",
+      "width": 600,
+      "height": 600
+    },
+    {
+      "id": "img4",
+      "kind": "image",
+      "file": "media/ember.png",
+      "name": "Ember.png",
+      "width": 700,
+      "height": 400
+    },
+    {
+      "id": "img5",
+      "kind": "image",
+      "file": "media/dusk.png",
+      "name": "Dusk.png",
+      "width": 1000,
+      "height": 500
+    },
+    {
+      "id": "img6",
+      "kind": "image",
+      "file": "media/meadow.png",
+      "name": "Meadow.png",
+      "width": 480,
+      "height": 720
+    },
+    {
+      "id": "aud1",
+      "kind": "audio",
+      "file": "media/hum.wav",
+      "name": "Hum.wav"
+    },
+    {
+      "id": "aud2",
+      "kind": "audio",
+      "file": "media/chime.wav",
+      "name": "Chime.wav"
+    }
+  ]
+}
