@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "name": "Sample Museum",
   "settings": {
     "wallHeight": 3,
@@ -18,6 +18,11 @@
     "ceilingFinish": {
       "color": "#ffffff",
       "tileSize": 1
+    },
+    "sky": {
+      "kind": "panorama",
+      "textureId": "m-awoh3v",
+      "rotationDeg": 0
     },
     "spawn": {
       "x": 4,
@@ -465,13 +470,11 @@
         "h": 5
       },
       "floor": {
-        "color": "#c9b99a",
-        "tileSize": 1
+        "color": "#5dea66",
+        "tileSize": 1,
+        "textureId": "m-pkviob"
       },
-      "ceiling": {
-        "color": "#ffffff",
-        "tileSize": 1
-      }
+      "openSky": true
     }
   ],
   "media": [
@@ -599,6 +602,14 @@
       "name": "23W.jpg",
       "width": 512,
       "height": 512
+    },
+    {
+      "id": "m-awoh3v",
+      "kind": "panorama",
+      "file": "media/tsxpjjd2ur.jpg",
+      "name": "evening_meadow.jpg",
+      "width": 4096,
+      "height": 2048
     }
   ]
 }
