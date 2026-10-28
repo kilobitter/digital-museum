@@ -122,6 +122,32 @@ folder you picked. **Keep that folder**: it is your museum. Next time, open the 
   OneDrive, copying files in), saving pauses and you choose **Reload from folder** or **Overwrite**.
 - Only `museum.json` and the `media` folder inside your folder are ever touched.
 
+## Combining museums
+Collaborators each build a museum in their own folder (see "For collaborators") and send you the folder
+or a .zip of it. You put them together in your own museum:
+
+1. Click **Import museum...** in the top bar and choose **From a folder...** or **From a .zip file...**
+   (a zip made with "Compress" on a folder works, also when it holds one wrapping folder). Tick
+   **Only bring media that is used** to leave out library files that are not hung or used anywhere.
+2. The editor copies their walls, paintings, audio zones, floor/ceiling areas and files into yours. The
+   copy lands to the right of your current museum and is already selected.
+3. **Place it**: drag the selection, use the arrow keys, and press `[` and `]` to rotate. Then use the
+   **Door** tool to cut a doorway where their rooms should connect to yours.
+
+What is kept from each side: from **your** museum the name, wall height and thickness, grid, default
+finishes, sky, start point and ceilings. From **their** museum the plan and the look: walls without their
+own finish get their default wall finish, and when their floor or ceiling differed (or they had no
+ceilings) an area named "<their name> (base)" is added over their rooms so it looks the same. A note lists
+anything that did not fit, such as paintings taller than your walls or files missing from their folder.
+Their sky and start point are not used.
+
+Importing is a one-time copy: nothing stays linked to their folder (which is never written to), and
+importing the same museum again makes a second, independent copy. Undo removes an import from the plan;
+the copied files stay in your library as unused media.
+
+**Export .zip** (top bar) downloads your whole museum, `museum.json` plus all media, as one zip you can send
+to someone, who can import it the same way.
+
 ## Previewing on a Quest
 Run `npm run dev` and open the **Network** URL it prints (for example `https://192.168.x.x:5317/`) in the
 Quest browser, on the same Wi-Fi. Accept the certificate warning, then press **Enter VR**. The editor is

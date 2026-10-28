@@ -14,6 +14,11 @@ import { canRedo, canUndo, clearHistory, commitFrom, createHistory, push, redo, 
 import { shouldScheduleAutosave } from './autosave';
 import { LAYER_KEY, toolsFor, type Layer, type Selection, type Tool } from './types';
 import { MultiInspector } from './MultiInspector';
+import { ImportMenu } from './ImportMenu';
+import { prepareMedia } from './importFlow';
+import { mergeMuseum } from './importMerge';
+import type { ImportSource } from './importSource';
+import { exportMuseumZip } from './exportZip';
 import { Field, NumField } from './fields';
 import { DOOR_DEFAULT_M, clampDoorWidth } from './doorway';
 import {
@@ -65,6 +70,14 @@ function saveSizes(sizes: Record<string, number>): void {
 
 const INCLUDE_AREAS_KEY = 'museum-editor.includeAreas';
 const DOOR_WIDTH_KEY = 'museum-editor.doorWidth';
+const ONLY_USED_KEY = 'museum-editor.importOnlyUsed';
+function loadOnlyUsed(): boolean {
+  try {
+    return localStorage.getItem(ONLY_USED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
 function loadIncludeAreas(): boolean {
   try {
     return localStorage.getItem(INCLUDE_AREAS_KEY) !== 'false';
@@ -109,6 +122,9 @@ export function App({ store, onSwitchFolder }: EditorProps) {
   const [rawMulti, setRawMulti] = useState<MultiSel>(EMPTY_SEL);
   const [includeAreas, setIncludeAreasState] = useState(loadIncludeAreas);
   const [doorWidth, setDoorWidthState] = useState(loadDoorWidth);
+  const [onlyUsed, setOnlyUsedState] = useState(loadOnlyUsed);
+  const [importPanel, setImportPanel] = useState<{ title: string; items: string[] } | null>(null);
+  const [fitNonce, setFitNonce] = useState(0);
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -157,7 +173,7 @@ export function App({ store, onSwitchFolder }: EditorProps) {
   const notify = useCallback((msg: string) => setNotice(msg), []);
   useEffect(() => {
     if (!notice) return;
-    const t = setTimeout(() => setNotice(null), 4500);
+    const t = setTimeout(() => setNotice(null), Math.min(15000, Math.max(4500, notice.length * 55)));
     return () => clearTimeout(t);
   }, [notice]);
 
@@ -461,6 +477,90 @@ export function App({ store, onSwitchFolder }: EditorProps) {
     setTool('work');
   };
 
+  // ----- importing and exporting whole museums -----
+  useEffect(() => {
+    if (fitNonce) canvas.current?.fit();
+  }, [fitNonce]);
+
+  const setOnlyUsed = (v: boolean) => {
+    setOnlyUsedState(v);
+    savePref(ONLY_USED_KEY, String(v));
+  };
+
+  const importMuseum = useCallback(
+    async (source: ImportSource) => {
+      if (!writable) return;
+      setBusy('Importing…');
+      setImportPanel(null);
+      try {
+        const prep = await prepareMedia(presentRef.current, source, store, {
+          onlyUsed,
+          concurrency: UPLOAD_CONCURRENCY,
+          onProgress: (done, total) => setBusy(`Importing ${done}/${total}…`),
+        });
+        if (!prep.ok) {
+          setImportPanel({
+            title: 'Import stopped: nothing was changed in your museum',
+            items: [...prep.failures, ...(prep.uploaded ? [`${prep.uploaded} files were already uploaded and stay in your library as unused media.`] : [])],
+          });
+          return;
+        }
+        const host = presentRef.current; // latest, in case it was edited meanwhile
+        const r = mergeMuseum(host, source.museum, prep.mappings, { onlyUsed });
+        const check = parseMuseum(r.museum);
+        if (!check.ok) {
+          setImportPanel({ title: 'Import stopped: the result would not be valid', items: check.errors });
+          return;
+        }
+        dispatch({ type: 'push', museum: r.museum });
+        setLayerState('build');
+        setTool('select');
+        canvas.current?.cancelDraft();
+        setMultiSel(r.selection);
+        setFitNonce((n) => n + 1);
+        const warnings = [...prep.warnings, ...r.warnings];
+        if (warnings.length) setImportPanel({ title: 'Import notes', items: warnings });
+        const { walls, works, zones, areas, media } = r.summary;
+        notify(
+          `Imported "${source.museum.name || source.label}": ${walls} walls, ${works} paintings, ${zones} zones, ${areas} areas, ${media} files. ` +
+            'Drag it into place; [ and ] rotate; use the Door tool to connect rooms. Undo removes it from the plan; the files stay in the library.',
+        );
+      } catch (e) {
+        setImportPanel({ title: 'Import failed', items: [e instanceof Error ? e.message : String(e)] });
+      } finally {
+        setBusy(null);
+      }
+    },
+    [notify, onlyUsed, setMultiSel, store, writable],
+  );
+
+  const exportZip = async () => {
+    setBusy('Exporting…');
+    try {
+      while (savingRef.current) await new Promise((r) => setTimeout(r, 50));
+      let flushed = true;
+      if (writable && presentRef.current !== savedRef.current) flushed = await saveNow();
+      const { blob, missing, fileName } = await exportMuseumZip(presentRef.current, store);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      notify(
+        `Exported ${fileName}.` +
+          (missing.length ? ` ${missing.length} media files were not found and are not in the zip: ${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ', …' : ''}.` : '') +
+          (flushed ? '' : ' The latest changes could not be saved first; the zip holds what you see here.'),
+      );
+    } catch (e) {
+      notify(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   // ----- external change / switching folders -----
   const reloadFromFolder = async () => {
     if (presentRef.current !== savedRef.current && !window.confirm('Reload from the folder? Your changes in this tab that are not in the folder will be lost.')) return;
@@ -542,6 +642,10 @@ export function App({ store, onSwitchFolder }: EditorProps) {
         <span className="sep" />
         <button disabled={!canUndo(hist)} onClick={() => dispatch({ type: 'undo' })} title="Undo (Ctrl/Cmd+Z)">Undo</button>
         <button disabled={!canRedo(hist)} onClick={() => dispatch({ type: 'redo' })} title="Redo (Shift+Ctrl/Cmd+Z)">Redo</button>
+        <span className="sep" />
+        <ImportMenu disabled={!writable || busy !== null} onlyUsed={onlyUsed} onOnlyUsed={setOnlyUsed} onSource={(s) => void importMuseum(s)} onProblem={(title, items) => setImportPanel({ title, items })} />
+        <button disabled={busy !== null || museum.media.length + museum.walls.length === 0} onClick={() => void exportZip()} title="Download this museum as one .zip file to send to someone">Export .zip</button>
+        {busy && <span className="muted">{busy}</span>}
         <span className="grow" />
         <button className={'status ' + status.cls} onClick={() => saveState === 'error' && setShowErrors((v) => !v)} title={saveState === 'error' ? 'Show errors' : ''}>
           <i /> {status.text}
@@ -554,6 +658,13 @@ export function App({ store, onSwitchFolder }: EditorProps) {
         <div className="error-panel">
           <div className="row"><strong>{saveState === 'error' ? 'Not saved' : 'Errors'}</strong><span className="grow" /><button onClick={() => setShowErrors(false)}>Close</button></div>
           <ul className="errors">{saveErrors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+        </div>
+      )}
+
+      {importPanel && (
+        <div className="error-panel left">
+          <div className="row"><strong>{importPanel.title}</strong><span className="grow" /><button onClick={() => setImportPanel(null)}>Close</button></div>
+          <ul className="errors">{importPanel.items.map((e, i) => <li key={i}>{e}</li>)}</ul>
         </div>
       )}
 
