@@ -8,7 +8,7 @@ import { Inspector, SettingsPanel } from './Inspector';
 import { Library, type Section } from './Library';
 import { LibraryResizer, useLibraryHeight } from './LibraryResizer';
 import { isLoopbackHost, localEditorUrl } from './host';
-import { AUDIO_WARN_BYTES, MAX_TEXTURE_SIDE, mediaKindOf, parsePaintingFilename, prepareImage } from './media';
+import { AUDIO_WARN_BYTES, MAX_PANORAMA_SIDE, MAX_TEXTURE_SIDE, PANORAMA_JPEG_QUALITY, isRoughlyEquirect, mediaKindOf, parsePaintingFilename, prepareImage } from './media';
 import { isDuplicate, runPool, summarizeUpload } from './uploadQueue';
 import {
   addMedia, computeWarnings, deleteWall, deleteWork, deleteZone, findWall, findWork, findZone, removeMedia,
@@ -264,7 +264,7 @@ export function App() {
         if (!fileKind) {
           failures.push(`${f.name}: unsupported type`);
         } else if ((section === 'audio') !== (fileKind === 'audio')) {
-          failures.push(`${f.name}: ${fileKind === 'audio' ? 'audio belongs in the Audio section' : 'images go into Paintings or Textures'}`);
+          failures.push(`${f.name}: ${fileKind === 'audio' ? 'audio belongs in the Audio section' : 'images go into Paintings, Textures or Panoramas'}`);
         } else if (isDuplicate(known, sizes, f)) {
           skipped.push(f.name);
         } else {
@@ -274,14 +274,20 @@ export function App() {
         }
       }
       let added = 0;
+      const aspectNotes: string[] = [];
       const bigNames: string[] = [];
       const results = await runPool(
         queue,
         UPLOAD_CONCURRENCY,
         async ({ file: f, kind }) => {
           let item: Parameters<typeof addMedia>[1];
-          if (kind === 'image' || kind === 'texture') {
-            const img = await prepareImage(f, kind === 'texture' ? MAX_TEXTURE_SIDE : undefined);
+          if (kind === 'image' || kind === 'texture' || kind === 'panorama') {
+            const img =
+              kind === 'panorama'
+                ? await prepareImage(f, MAX_PANORAMA_SIDE, PANORAMA_JPEG_QUALITY)
+                : await prepareImage(f, kind === 'texture' ? MAX_TEXTURE_SIDE : undefined);
+            if (kind === 'panorama' && !isRoughlyEquirect(img.width, img.height))
+              aspectNotes.push(`${f.name} is ${img.width}×${img.height}: a sky panorama should be about 2:1 (equirectangular) or it will look stretched`);
             const file = await uploadMedia(f.name.replace(/\.[^.]+$/, '') + '.jpg', img.blob);
             item = { kind, file, name: f.name, width: img.width, height: img.height };
             if (kind === 'image') {
@@ -315,7 +321,7 @@ export function App() {
         }, 0);
       }
       setBusy(null);
-      if (files.length) notify(summarizeUpload(added, skipped, failures));
+      if (files.length) notify([summarizeUpload(added, skipped, failures), ...aspectNotes].join(' '));
     },
     [notify],
   );

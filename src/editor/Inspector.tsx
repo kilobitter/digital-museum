@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import type { MediaItem, Museum, Wall, WallFinish, WallSide } from '../shared/museum';
+import type { MediaItem, Museum, Sky, Wall, WallFinish, WallSide } from '../shared/museum';
+import { defaultSky } from '../shared/validate';
 import { wallLength } from '../shared/geometry';
 import {
   coincidentEndpoints, deleteWall, fillLayout, fillWall, deleteWork, deleteZone, findMedia, findWall, findWork, findZone, flipWork, hungCount, imageHeight,
@@ -7,7 +8,7 @@ import {
   updateZone,
 } from './model';
 import { Field, NumField } from './fields';
-import { deleteArea, duplicateArea, findArea, reorderArea, setAreaRect, updateArea, type Reorder } from './areaModel';
+import { ceilingModeOf, deleteArea, duplicateArea, findArea, reorderArea, setAreaRect, setCeilingMode, updateArea, type CeilingMode, type Reorder } from './areaModel';
 import type { Selection } from './types';
 
 interface Props {
@@ -242,25 +243,49 @@ export function Inspector({ museum: m, selection, selectedMediaId, onChange, onD
     const idx = m.areas.findIndex((x) => x.id === a.id);
     const last = m.areas.length - 1;
     const order = (how: Reorder) => onChange(reorderArea(m, a.id, how));
-    const surface = (which: 'floor' | 'ceiling', label: string, dflt: WallFinish) => {
-      const f = a[which];
-      const other = which === 'floor' ? a.ceiling : a.floor;
-      return (
-        <div className="finish">
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={f !== undefined}
-              disabled={f !== undefined && other === undefined}
-              title={f !== undefined && other === undefined ? 'An area needs a floor or a ceiling finish' : ''}
-              onChange={(e) => onChange(updateArea(m, a.id, { [which]: e.target.checked ? { ...dflt } : undefined }))}
-            />
-            {label}
-          </label>
-          {f && <FinishFields finish={f} museum={m} keyPrefix={k(which)} onChange={(nf, key) => onChange(updateArea(m, a.id, { [which]: nf }), key)} />}
+    const floorOnlyHere = a.ceiling === undefined && !a.openSky;
+    const floorRow = (
+      <div className="finish">
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={a.floor !== undefined}
+            disabled={a.floor !== undefined && floorOnlyHere}
+            title={a.floor !== undefined && floorOnlyHere ? 'An area needs a floor finish, a ceiling finish or open sky' : ''}
+            onChange={(e) => onChange(updateArea(m, a.id, { floor: e.target.checked ? { ...m.settings.floorFinish } : undefined }))}
+          />
+          Floor
+        </label>
+        {a.floor && <FinishFields finish={a.floor} museum={m} keyPrefix={k('floor')} onChange={(nf, key) => onChange(updateArea(m, a.id, { floor: nf }), key)} />}
+      </div>
+    );
+    const mode = ceilingModeOf(a);
+    const modes: { mode: CeilingMode; label: string; title: string }[] = [
+      { mode: 'none', label: 'None', title: a.floor ? "This area doesn't change the ceiling" : 'An area without a floor needs a ceiling finish or open sky' },
+      { mode: 'finish', label: 'Finish', title: 'Give the ceiling above this area its own finish' },
+      { mode: 'open', label: 'Open sky', title: 'No ceiling here: the sky shows' },
+    ];
+    const ceilingRow = (
+      <div className="finish">
+        <div className="field-label">Ceiling</div>
+        <div className="seg" role="radiogroup" aria-label="Ceiling of this area">
+          {modes.map((o) => (
+            <button
+              key={o.mode}
+              role="radio"
+              aria-checked={mode === o.mode}
+              className={'small' + (mode === o.mode ? ' active' : '')}
+              disabled={o.mode === 'none' && !a.floor}
+              title={o.title}
+              onClick={() => onChange(setCeilingMode(m, a.id, o.mode, m.settings.ceilingFinish))}
+            >
+              {o.label}
+            </button>
+          ))}
         </div>
-      );
-    };
+        {a.ceiling && <FinishFields finish={a.ceiling} museum={m} keyPrefix={k('ceiling')} onChange={(nf, key) => onChange(updateArea(m, a.id, { ceiling: nf }), key)} />}
+      </div>
+    );
     return (
       <section className="panel">
         <h3>Area <span className="muted">layer {idx + 1} of {m.areas.length}</span></h3>
@@ -271,9 +296,10 @@ export function Inspector({ museum: m, selection, selectedMediaId, onChange, onD
           <Field label="Width"><NumField value={a.rect.w} min={0} exclusiveMin onChange={(v) => onChange(setAreaRect(m, a.id, { w: v }), k('w'))} unit="m" /></Field>
           <Field label="Height"><NumField value={a.rect.h} min={0} exclusiveMin onChange={(v) => onChange(setAreaRect(m, a.id, { h: v }), k('h'))} unit="m" /></Field>
         </div>
-        {surface('floor', 'Floor', m.settings.floorFinish)}
-        {surface('ceiling', 'Ceiling', m.settings.ceilingFinish)}
-        {!m.settings.ceiling && a.ceiling && <p className="hint">The museum has no ceiling (see settings), so ceiling areas are not shown.</p>}
+        {floorRow}
+        {ceilingRow}
+        {!m.settings.ceiling && mode !== 'none' && <p className="hint">The museum has no ceiling (see settings), so ceiling settings are not shown.</p>}
+        {mode === 'open' && <p className="hint">Open sky removes the ceiling in this rectangle, where this area is on top of the stack.</p>}
         <div className="row stack-buttons">
           <button disabled={idx >= last} onClick={() => order('forward')} title="One step up the stack">Bring forward</button>
           <button disabled={idx <= 0} onClick={() => order('backward')} title="One step down the stack">Send backward</button>
@@ -313,6 +339,70 @@ export function Inspector({ museum: m, selection, selectedMediaId, onChange, onD
   return null;
 }
 
+/** Sky: a three-colour gradient or an equirectangular panorama. */
+function SkyFields({ museum: m, onChange }: { museum: Museum; onChange(m: Museum, key?: string): void }) {
+  const sky = m.settings.sky;
+  const panos = m.media.filter((x) => x.kind === 'panorama');
+  const setSky = (next: Sky, key?: string) => onChange(updateSettings(m, { sky: next }), key);
+  const grad = sky.kind === 'gradient' ? sky : defaultSky() as Extract<Sky, { kind: 'gradient' }>;
+  const missing = sky.kind === 'panorama' && !panos.some((p) => p.id === sky.textureId);
+  return (
+    <>
+      <h3 className="subhead">Sky</h3>
+      <Field label="Type">
+        <select
+          value={sky.kind}
+          onChange={(e) =>
+            setSky(
+              e.target.value === 'panorama'
+                ? { kind: 'panorama', textureId: panos[0]?.id ?? '', rotationDeg: 0 }
+                : { ...grad, kind: 'gradient' },
+            )
+          }
+        >
+          <option value="gradient">Gradient</option>
+          <option value="panorama" disabled={panos.length === 0}>Panorama{panos.length === 0 ? ' (add one in the Panoramas tab)' : ''}</option>
+        </select>
+      </Field>
+      {sky.kind === 'gradient' ? (
+        <>
+          <div className="sky-strip" aria-hidden="true" style={{ background: `linear-gradient(to bottom, ${sky.top}, ${sky.horizon} 50%, ${sky.bottom})` }} />
+          <div className="grid2">
+            {(['top', 'horizon', 'bottom'] as const).map((k) => (
+              <Field key={k} label={k[0].toUpperCase() + k.slice(1)}>
+                <input type="color" className="colour" value={sky[k]} onChange={(e) => setSky({ ...sky, [k]: e.target.value }, `s.sky.${k}`)} />
+              </Field>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <Field label="Panorama">
+            <select value={sky.textureId} onChange={(e) => setSky({ ...sky, textureId: e.target.value })}>
+              {(missing || sky.textureId === '') && <option value={sky.textureId}>(missing)</option>}
+              {panos.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Rotation">
+            <input
+              type="range"
+              min={-180}
+              max={180}
+              step={1}
+              value={sky.rotationDeg}
+              onChange={(e) => setSky({ ...sky, rotationDeg: Number(e.target.value) }, 's.sky.rot')}
+            />
+          </Field>
+          <Field label="Rotation (°)">
+            <NumField value={sky.rotationDeg} min={-180} max={180} step={5} onChange={(v) => setSky({ ...sky, rotationDeg: v }, 's.sky.rot')} unit="°" />
+          </Field>
+          <p className="hint">Turns the image clockwise seen from above; 0° puts the image centre straight up the blueprint.</p>
+        </>
+      )}
+    </>
+  );
+}
+
 export function SettingsPanel({ museum: m, onChange }: { museum: Museum; onChange(m: Museum, key?: string): void }) {
   const s = m.settings;
   return (
@@ -337,6 +427,7 @@ export function SettingsPanel({ museum: m, onChange }: { museum: Museum; onChang
       <h3 className="subhead">Default ceiling finish</h3>
       <FinishFields finish={s.ceilingFinish} museum={m} keyPrefix="s.ceil" onChange={(f, key) => onChange(updateSettings(m, { ceilingFinish: f }), key)} />
       {!s.ceiling && <p className="hint">The ceiling is switched off, so its finish is not shown.</p>}
+      <SkyFields museum={m} onChange={onChange} />
       <p className="hint">Facing 0° looks up the blueprint, 90° to the right.</p>
     </details>
   );

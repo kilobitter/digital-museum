@@ -1,7 +1,9 @@
 // Client-side media preparation.
 export const MAX_IMAGE_SIDE = 1600;
 export const MAX_TEXTURE_SIDE = 1024;
+export const MAX_PANORAMA_SIDE = 4096;
 export const JPEG_QUALITY = 0.82;
+export const PANORAMA_JPEG_QUALITY = 0.85;
 export const AUDIO_WARN_BYTES = 15 * 1024 * 1024;
 
 const IMAGE_EXT = /\.(jpe?g|png|webp)$/i;
@@ -36,7 +38,7 @@ export function fitSize(w: number, h: number, max = MAX_IMAGE_SIDE): { width: nu
 }
 
 /** Decode (EXIF orientation applied), downscale, and re-encode as JPEG. */
-export async function prepareImage(file: File, maxSide = MAX_IMAGE_SIDE): Promise<{ blob: Blob; width: number; height: number }> {
+export async function prepareImage(file: File, maxSide = MAX_IMAGE_SIDE, quality = JPEG_QUALITY): Promise<{ blob: Blob; width: number; height: number }> {
   const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
   try {
     const { width, height } = fitSize(bmp.width, bmp.height, maxSide);
@@ -49,10 +51,13 @@ export async function prepareImage(file: File, maxSide = MAX_IMAGE_SIDE): Promis
     ctx.fillRect(0, 0, width, height);
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(bmp, 0, 0, width, height);
-    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', JPEG_QUALITY));
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', quality));
     if (!blob) throw new Error('Could not encode image');
     return { blob, width, height };
   } finally {
     bmp.close();
   }
 }
+
+/** True when width:height is close to the 2:1 an equirectangular panorama has (10 % tolerance). */
+export const isRoughlyEquirect = (w: number, h: number): boolean => h > 0 && Math.abs(w / h - 2) <= 0.2;

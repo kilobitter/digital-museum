@@ -12,7 +12,8 @@ export function allFinishes(m: Museum): Finish[] {
   return out;
 }
 
-/** How many finishes (settings, walls, areas) reference this texture media item. */
+/** How many finishes (settings, walls, areas) and the sky reference this media item. */
 export function textureUsage(m: Museum, mediaId: string): number {
-  return allFinishes(m).filter((f) => f.textureId === mediaId).length;
+  const sky = m.settings.sky.kind === 'panorama' && m.settings.sky.textureId === mediaId ? 1 : 0;
+  return allFinishes(m).filter((f) => f.textureId === mediaId).length + sky;
 }

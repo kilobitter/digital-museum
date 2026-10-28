@@ -5,7 +5,7 @@ import { mediaUsage } from './model';
 import { gridColumns, gridWindow, shouldUseGrid } from './libraryLayout';
 import { TAB_STORAGE_KEY, parseTab, tabForKey } from './libraryTabs';
 
-export type Section = 'image' | 'texture' | 'audio';
+export type Section = 'image' | 'texture' | 'panorama' | 'audio';
 
 interface Props {
   museum: Museum;
@@ -24,6 +24,7 @@ interface Props {
 const SECTIONS: { section: Section; title: string; accept: string; empty: string }[] = [
   { section: 'image', title: 'Paintings', accept: '.jpg,.jpeg,.png,.webp', empty: 'No paintings yet. Resized to 1600 px.' },
   { section: 'texture', title: 'Textures', accept: '.jpg,.jpeg,.png,.webp', empty: 'No wall textures yet. Resized to 1024 px.' },
+  { section: 'panorama', title: 'Panoramas', accept: '.jpg,.jpeg,.png,.webp', empty: 'No sky panoramas yet. 2:1 equirectangular, resized to 4096 px.' },
   { section: 'audio', title: 'Audio', accept: '.mp3,.m4a,.aac,.ogg,.wav', empty: 'No audio yet.' },
 ];
 
@@ -144,6 +145,7 @@ export function Library({ museum: m, selectedId, bigAudio, busy, readOnly, rando
   const paintings = useMemo(() => filterPaintings(m, query, filter), [m.media, m.works, query, filter]);
   const others = useMemo(() => ({
     texture: m.media.filter((x) => x.kind === 'texture'),
+    panorama: m.media.filter((x) => x.kind === 'panorama'),
     audio: m.media.filter((x) => x.kind === 'audio'),
   }), [m.media]);
 
@@ -174,7 +176,7 @@ export function Library({ museum: m, selectedId, bigAudio, busy, readOnly, rando
     const used = it.kind === 'image' ? (hung.has(it.id) ? 1 : 0) : mediaUsage(m, it.id);
     const meta =
       it.kind === 'image' ? `${it.width}×${it.height} · ${hung.has(it.id) ? 'hung' : 'unhung'}`
-      : it.kind === 'texture' ? `${it.width}×${it.height} · used ${used}×`
+      : it.kind === 'texture' || it.kind === 'panorama' ? `${it.width}×${it.height} · used ${used}×`
       : `used ${used}×`;
     return (
       <div key={it.id} className={'card' + (selectedId === it.id ? ' selected' : '')} onClick={() => onSelect(it.id === selectedId ? null : it.id)}>

@@ -6,7 +6,8 @@ import { wallDirection, wallLength, workPlacement } from '../shared/geometry';
 import type { Finish, MediaItem, Museum, WallFinish } from '../shared/museum';
 import { computeFloorBounds, type Bounds } from './collision';
 import { MAX_WALL_TEXTURE, loadTexture } from './textures';
-import { areaQuads, finishKey, neededTextureIds, surfaceQuad } from './surfaces';
+import { areaQuads, decomposeCeiling, finishKey, neededTextureIds, surfaceQuad } from './surfaces';
+import { buildSky, type SkyDome } from './sky';
 import { wallGeometry } from './wallGeometry';
 
 export const FRAME_DEPTH = 0.01; // frame back is flush with the wall face
@@ -34,6 +35,8 @@ export interface BuiltScene {
   bounds: Bounds;
   warnings: string[];
   slots: PaintingSlot[];
+  /** The sky dome (already in `group`); call `sky.follow(camera)` every frame. */
+  sky: SkyDome;
 }
 
 /** Wall finish in effect for a wall: its own, else the museum default. */
@@ -87,9 +90,10 @@ export async function buildMuseumScene(
     }),
   );
 
-  // Floor, ceiling and their areas. Quads carry world-aligned UVs and their own height, so every quad
-  // with the same finish merges into ONE mesh per surface, whatever the stacking order: depth decides.
-  // Draw calls: 1 (base floor) + 1 (base ceiling) + one per distinct area finish per surface.
+  // Floor: base quad plus area quads (T7 overlap levels, 1 mm apart). Ceiling: a flat decomposition (see
+  // decomposeCeiling) so every ceiling quad sits at exactly wallHeight and open-sky areas are simply holes.
+  // Quads carry world-aligned UVs, so every quad with the same finish merges into ONE mesh per surface.
+  // Draw calls: 1 (base floor) + one per distinct floor-area finish + one per distinct ceiling finish.
   const surfaceMats = new Map<string, THREE.MeshLambertMaterial>();
   const surfaceMat = (surface: string, f: Finish, polygonOffset: number) => {
     const tex = f.textureId ? wallTextures.get(f.textureId) ?? null : null;
@@ -97,8 +101,7 @@ export async function buildMuseumScene(
     let mat = surfaceMats.get(key);
     if (!mat) {
       mat = new THREE.MeshLambertMaterial({ color: new THREE.Color(f.color), map: tex });
-      // Base surfaces are pushed back and area surfaces pulled forward so they never fight the base.
-      mat.polygonOffset = true;
+      mat.polygonOffset = polygonOffset !== 0;
       mat.polygonOffsetFactor = mat.polygonOffsetUnits = polygonOffset;
       surfaceMats.set(key, mat);
     }
@@ -106,14 +109,13 @@ export async function buildMuseumScene(
   };
   const baseRect = { x: bounds.minX, y: bounds.minY, w: bw, h: bd };
   group.add(new THREE.Mesh(surfaceQuad(baseRect, 0, museum.settings.floorFinish.tileSize, 'up'), surfaceMat('floor', museum.settings.floorFinish, 1)));
-  if (museum.settings.ceiling)
-    group.add(new THREE.Mesh(surfaceQuad(baseRect, H, museum.settings.ceilingFinish.tileSize, 'down'), surfaceMat('ceiling', museum.settings.ceilingFinish, 1)));
-  for (const surface of ['floor', 'ceiling'] as const) {
+  {
+    // Floor areas are pulled forward so they never fight the base floor.
     const byMat = new Map<THREE.MeshLambertMaterial, THREE.BufferGeometry[]>();
-    for (const q of areaQuads(museum, surface)) {
-      const mat = surfaceMat(surface, q.finish, -1);
+    for (const q of areaQuads(museum)) {
+      const mat = surfaceMat('floor', q.finish, -1);
       const list = byMat.get(mat) ?? [];
-      list.push(surfaceQuad(q.rect, q.y, q.finish.tileSize, surface === 'floor' ? 'up' : 'down'));
+      list.push(surfaceQuad(q.rect, q.y, q.finish.tileSize, 'up'));
       byMat.set(mat, list);
     }
     for (const [mat, geos] of byMat) {
@@ -121,6 +123,23 @@ export async function buildMuseumScene(
       if (g) group.add(new THREE.Mesh(g, mat));
     }
   }
+  if (museum.settings.ceiling) {
+    const plan = decomposeCeiling(baseRect, museum.settings.ceilingFinish, museum.areas);
+    const byMat = new Map<THREE.MeshLambertMaterial, THREE.BufferGeometry[]>();
+    for (const grp of plan.groups) {
+      const mat = surfaceMat('ceiling', grp.finish, 0); // same finish => same material, whatever the tile size
+      const list = byMat.get(mat) ?? [];
+      for (const r of grp.rects) list.push(surfaceQuad(r, H, grp.finish.tileSize, 'down'));
+      byMat.set(mat, list);
+    }
+    for (const [mat, geos] of byMat) {
+      const g = merged(geos);
+      if (g) group.add(new THREE.Mesh(g, mat));
+    }
+  }
+
+  const sky = await buildSky(museum, urlFor, anisotropy, warnings);
+  group.add(sky.mesh);
 
   // Walls: one merged mesh per material (identical texture + colour); tileSize lives in the UVs.
   const wallMats = new Map<string, { mat: THREE.MeshLambertMaterial; geos: THREE.BufferGeometry[] }>();
@@ -183,5 +202,5 @@ export async function buildMuseumScene(
   const panels = merged(panelGeos);
   if (panels) group.add(new THREE.Mesh(panels, new THREE.MeshBasicMaterial({ color: 0xd9d9d9 })));
 
-  return { group, bounds, warnings, slots };
+  return { group, bounds, warnings, slots, sky };
 }

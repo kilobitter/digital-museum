@@ -7,11 +7,12 @@
 //   world +y is up; floor is at y = 0.
 // So "up" on the blueprint (plan -y) is world -z, the default three.js forward.
 
-export const MUSEUM_VERSION = 3 as const;
+export const MUSEUM_VERSION = 4 as const;
 // v2 (2026-10-27): title/artist/description moved from Work to MediaItem; wall finishes and
 // 'texture' media added.
 // v3 (2026-10-28): floor/ceiling default finishes and rectangular floor/ceiling areas.
-// parseMuseum migrates v1 and v2 files on load.
+// v4 (2026-10-28): sky (gradient or panorama), 'panorama' media, open-sky areas.
+// parseMuseum migrates v1, v2 and v3 files on load.
 
 export interface Vec2 {
   x: number;
@@ -33,6 +34,8 @@ export interface MuseumSettings {
   floorFinish: Finish;
   /** Ceiling everywhere no area overrides it (only rendered when `ceiling` is true). Default { color: '#ffffff', tileSize: 1 }. */
   ceilingFinish: Finish;
+  /** What is visible beyond walls and through open-sky areas. Default: the gradient below. */
+  sky: Sky;
   /** Where visitors start. yawDeg 0 faces plan -y (up on the blueprint), 90 faces plan +x; clockwise seen from above. */
   spawn: { x: number; y: number; yawDeg: number };
 }
@@ -51,13 +54,26 @@ export interface Finish {
   tileSize: number;
 }
 
+/**
+ * Sky dome. Gradient colours are '#rrggbb'; default
+ * { kind: 'gradient', top: '#8fb8de', horizon: '#eef2f5', bottom: '#d8d4cc' }.
+ * Panorama: an equirectangular image (MediaItem kind 'panorama'); rotationDeg turns it about the
+ * vertical axis, clockwise seen from above, 0 = image centre faces plan -y.
+ */
+export type Sky =
+  | { kind: 'gradient'; top: string; horizon: string; bottom: string }
+  | { kind: 'panorama'; textureId: string; rotationDeg: number };
+
 /** Kept for readability at wall call sites. */
 export type WallFinish = Finish;
 
 /**
- * A rectangle that overrides the floor and/or ceiling finish inside it. At least one of
- * `floor` / `ceiling` is set. Areas are independent of walls (they may run under them).
- * Stacking: later entries in `Museum.areas` are drawn on top of earlier ones.
+ * A rectangle that overrides the floor and/or ceiling inside it. At least one of `floor`,
+ * `ceiling` or `openSky` is set; `ceiling` and `openSky` are mutually exclusive.
+ * Areas are independent of walls (they may run under them).
+ * Stacking: later entries in `Museum.areas` win over earlier ones where they overlap — for the
+ * ceiling this decides per spot between base ceiling, an area's ceiling finish, or open sky.
+ * An area with only `floor` doesn't affect the ceiling.
  */
 export interface Area {
   id: string;
@@ -66,6 +82,8 @@ export interface Area {
   rect: { x: number; y: number; w: number; h: number };
   floor?: Finish;
   ceiling?: Finish;
+  /** No ceiling inside this rect (the sky shows). */
+  openSky?: true;
 }
 
 export interface Wall {
@@ -118,13 +136,16 @@ export interface AudioZone {
 
 export interface MediaItem {
   id: string;
-  /** 'image' = a painting that can be hung; 'texture' = wall texture only; 'audio' = zone loop. */
-  kind: 'image' | 'audio' | 'texture';
+  /**
+   * 'image' = a painting that can be hung; 'texture' = wall/floor/ceiling texture;
+   * 'panorama' = equirectangular sky image; 'audio' = zone loop.
+   */
+  kind: 'image' | 'audio' | 'texture' | 'panorama';
   /** Path relative to the museum folder, always under "media/", e.g. "media/k3f9a2.jpg". */
   file: string;
   /** Original filename / human label. */
   name: string;
-  /** Pixel dimensions, required for images and textures. */
+  /** Pixel dimensions, required for images, textures and panoramas. */
   width?: number;
   height?: number;
   /** Label fields, used for kind 'image' (ignored otherwise). Missing = empty. */

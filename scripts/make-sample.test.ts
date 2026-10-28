@@ -11,7 +11,7 @@ const dirs: string[] = [];
 afterAll(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
 
 describe('make-sample.mjs', () => {
-  it('writes a valid v3 museum with textures, a custom wall finish and floor/ceiling areas into the given folder', () => {
+  it('writes a valid v4 museum with textures, a custom wall finish and floor/ceiling areas into the given folder', () => {
     const out = mkdtempSync(join(tmpdir(), 'museum-sample-'));
     dirs.push(out);
     execFileSync('node', [script, out], { stdio: 'pipe' });
@@ -19,7 +19,9 @@ describe('make-sample.mjs', () => {
     const r = parseMuseum(json);
     expect(r.ok ? [] : r.errors).toEqual([]);
     if (!r.ok) return;
-    expect(json.version).toBe(3);
+    expect(json.version).toBe(4);
+    expect(r.museum.areas.some((a) => a.openSky)).toBe(true);
+    expect(r.museum.settings.sky.kind).toBe('gradient');
     expect(r.museum.areas.some((a) => a.floor?.textureId)).toBe(true);
     expect(r.museum.areas.some((a) => a.ceiling)).toBe(true);
     expect(r.museum.media.some((m) => m.kind === 'texture')).toBe(true);

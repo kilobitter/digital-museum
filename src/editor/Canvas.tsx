@@ -8,7 +8,7 @@ import {
 import { hitTest, workSegment, zoneHandles } from './hit';
 import { areaHandles, hitTestAreas } from './hit';
 import {
-  addArea, fillRoom, findArea, MIN_AREA_SIZE, moveArea, rectFromDrag, resizeAreaRect, snapAreaMove, snapAreaPoint, updateArea,
+  addArea, areaTag, fillRoom, findArea, SKY_BLUE, MIN_AREA_SIZE, moveArea, rectFromDrag, resizeAreaRect, snapAreaMove, snapAreaPoint, updateArea,
 } from './areaModel';
 import type { Layer, Selection, Tool } from './types';
 
@@ -557,7 +557,7 @@ export function Canvas(p: Props) {
   const fillPreview = layer === 'areas' && tool === 'areaFill' && cursor ? fillRoom(m, cursor) : null;
   const selArea = selection?.type === 'area' ? findArea(m, selection.id) : undefined;
   const patterns = new Map<string, { id: string; href: string; tile: number }>();
-  const areaFace = (a: (typeof m.areas)[number]) => a.floor ?? a.ceiling!;
+  const areaFace = (a: (typeof m.areas)[number]) => a.floor ?? a.ceiling ?? { color: SKY_BLUE, tileSize: 1 };
   for (const a of m.areas) {
     const f = areaFace(a);
     const media = f.textureId ? m.media.find((x) => x.id === f.textureId && x.kind === 'texture') : undefined;
@@ -589,6 +589,9 @@ export function Canvas(p: Props) {
         <line className="origin" x1={0} x2={0} y1={-0.3} y2={0.3} />
 
         <defs>
+          <pattern id="sky-hatch" width={8 * px} height={8 * px} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <line x1={0} y1={0} x2={0} y2={8 * px} stroke="#3b9be0" strokeWidth={2 * px} />
+          </pattern>
           {[...patterns.values()].map((pt) => (
             <pattern key={pt.id} id={pt.id} x={0} y={0} width={pt.tile} height={pt.tile} patternUnits="userSpaceOnUse">
               <image href={pt.href} x={0} y={0} width={pt.tile} height={pt.tile} preserveAspectRatio="none" />
@@ -602,15 +605,16 @@ export function Canvas(p: Props) {
             const pat = f.textureId ? patterns.get(`${f.textureId}|${f.tileSize}`) : undefined;
             const sel = selection?.type === 'area' && selection.id === a.id;
             const r = a.rect;
-            const tag = a.floor && a.ceiling ? 'F+C' : a.floor ? 'F' : 'C';
+            const tag = areaTag(a);
             return (
-              <g key={a.id} className={'area' + (sel ? ' selected' : '') + (a.floor ? '' : ' ceiling-only')}>
+              <g key={a.id} className={'area' + (sel ? ' selected' : '') + (a.floor ? '' : ' ceiling-only') + (a.openSky ? ' open-sky' : '')}>
                 <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={f.color} fillOpacity={0.55} />
+                {a.openSky && <rect x={r.x} y={r.y} width={r.w} height={r.h} fill="url(#sky-hatch)" fillOpacity={0.8} />}
                 {pat && <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={`url(#${pat.id})`} fillOpacity={0.6} />}
                 <rect className="area-outline" x={r.x} y={r.y} width={r.w} height={r.h} />
                 {layer === 'areas' && (
                   <text className="area-label" x={r.x + r.w / 2} y={r.y + r.h / 2} fontSize={fs} strokeWidth={3 * px} textAnchor="middle" dominantBaseline="middle">
-                    {a.name || a.id} · {tag}
+                    {a.name || a.id} · {tag}{a.openSky ? ' ☁' : ''}
                   </text>
                 )}
               </g>

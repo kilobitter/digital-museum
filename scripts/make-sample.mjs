@@ -1,4 +1,4 @@
-// Generates a sample museum (format v3) into the given folder (no dependencies).
+// Generates a sample museum (format v4) into the given folder (no dependencies).
 // Usage: node scripts/make-sample.mjs <outDir> [--force]
 // Refuses to write into public/museum when it already holds a museum.json, unless --force is given.
 import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -169,12 +169,14 @@ const areas = [
   { id: 'ar-floor-b', name: 'Room B floor', rect: { x: 8, y: 0, w: 8, h: 6 }, floor: floorFinishWood },
   { id: 'ar-rug', name: 'Rug', rect: { x: 11, y: 2, w: 2, h: 2 }, floor: { color: '#8c3b3b', tileSize: 1 } },
   { id: 'ar-ceiling-a', name: 'Room A ceiling', rect: { x: 0, y: 0, w: 8, h: 6 }, ceiling: { color: '#e8eef6', tileSize: 1 } },
+  // A small open-sky courtyard in room A: no ceiling here (it wins over the ceiling area below it), grass-green floor.
+  { id: 'ar-courtyard', name: 'Courtyard', rect: { x: 3, y: 2, w: 2, h: 2 }, floor: { color: '#b9c9a8', tileSize: 1 }, openSky: true },
 ];
 const work = (id, mediaId, wallId, side, t, width) => ({ id, mediaId, wallId, side, t, centerHeight: 1.5, width });
 const museum = {
-  version: 3,
+  version: 4,
   name: 'Sample Museum',
-  settings: { wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, wallFinish: { color: '#ffffff', tileSize: 1 }, floorFinish: { color: '#e6e3dd', tileSize: 1 }, ceilingFinish: { color: '#ffffff', tileSize: 1 }, spawn: { x: 4, y: 5, yawDeg: 0 } },
+  settings: { wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, wallFinish: { color: '#ffffff', tileSize: 1 }, floorFinish: { color: '#e6e3dd', tileSize: 1 }, ceilingFinish: { color: '#ffffff', tileSize: 1 }, sky: { kind: 'gradient', top: '#8fb8de', horizon: '#eef2f5', bottom: '#d8d4cc' }, spawn: { x: 4, y: 5, yawDeg: 0 } },
   walls,
   works: [
     work('wk1', 'img1', 'wA-top', 1, 4, 2.4),
@@ -192,4 +194,4 @@ const museum = {
   media,
 };
 writeFileSync(join(root, 'museum.json'), JSON.stringify(museum, null, 2) + '\n');
-console.log('Sample museum (v3) written to', root);
+console.log('Sample museum (v4) written to', root);

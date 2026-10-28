@@ -4,11 +4,16 @@ import {
   type AudioZone,
   type MediaItem,
   type Museum,
+  type Sky,
   type Wall,
   type WallFinish,
   type Work,
   type ZoneShape,
 } from './museum';
+
+export function defaultSky(): Sky {
+  return { kind: 'gradient', top: '#8fb8de', horizon: '#eef2f5', bottom: '#d8d4cc' };
+}
 
 export function defaultMuseum(): Museum {
   return {
@@ -22,6 +27,7 @@ export function defaultMuseum(): Museum {
       wallFinish: { color: '#ffffff', tileSize: 1 },
       floorFinish: { color: '#e6e3dd', tileSize: 1 },
       ceilingFinish: { color: '#ffffff', tileSize: 1 },
+      sky: defaultSky(),
       spawn: { x: 0, y: 0, yawDeg: 0 },
     },
     walls: [],
@@ -87,7 +93,9 @@ export function parseMuseum(
   const legacy = json.version === 1;
   // v1 and v2 files are migrated to v3 (floor/ceiling finishes default, no areas).
   const preV3 = legacy || json.version === 2;
-  if (json.version !== MUSEUM_VERSION && !preV3) err('version', `expected ${MUSEUM_VERSION} (got ${JSON.stringify(json.version)})`);
+  // v3 files lack the sky; it is filled with the default.
+  const preV4 = preV3 || json.version === 3;
+  if (json.version !== MUSEUM_VERSION && !preV4) err('version', `expected ${MUSEUM_VERSION} (got ${JSON.stringify(json.version)})`);
   const name = typeof json.name === 'string' ? json.name : (err('name', 'expected a string'), '');
 
   /** Collected after media is parsed; needs the media ids, so it is validated lazily. */
@@ -124,6 +132,7 @@ export function parseMuseum(
       wallFinish: legacy ? { ...def.wallFinish } : finish(s.wallFinish, 'settings.wallFinish'),
       floorFinish: preV3 ? { ...def.floorFinish } : finish(s.floorFinish, 'settings.floorFinish'),
       ceilingFinish: preV3 ? { ...def.ceilingFinish } : finish(s.ceilingFinish, 'settings.ceilingFinish'),
+      sky: defaultSky(),
       spawn: {
         x: num(sp, 'x', 'settings.spawn'),
         y: num(sp, 'y', 'settings.spawn'),
@@ -162,14 +171,18 @@ export function parseMuseum(
     }
     const id = str(raw, 'id', p);
     const kind =
-      raw.kind === 'image' || raw.kind === 'audio' || (!legacy && raw.kind === 'texture')
+      raw.kind === 'image' || raw.kind === 'audio' || (!legacy && raw.kind === 'texture') || (!preV4 && raw.kind === 'panorama')
         ? raw.kind
-        : (err(`${p}.kind`, legacy ? "expected 'image' or 'audio'" : "expected 'image', 'audio' or 'texture'"), 'image' as const);
+        : (err(
+            `${p}.kind`,
+            legacy ? "expected 'image' or 'audio'" : preV4 ? "expected 'image', 'audio' or 'texture'" : "expected 'image', 'audio', 'texture' or 'panorama'",
+          ),
+          'image' as const);
     const file = str(raw, 'file', p);
     if (typeof raw.file === 'string' && !FILE_RE.test(raw.file))
       err(`${p}.file`, `invalid path '${raw.file}' (expected media/<name>.<jpg|jpeg|png|webp|mp3|m4a|aac|ogg|wav>)`);
     const m: MediaItem = { id, kind, file, name: typeof raw.name === 'string' ? raw.name : (err(`${p}.name`, 'expected a string'), '') };
-    if (kind === 'image' || kind === 'texture') {
+    if (kind === 'image' || kind === 'texture' || kind === 'panorama') {
       m.width = num(raw, 'width', p, { positive: true });
       m.height = num(raw, 'height', p, { positive: true });
     } else {
@@ -187,6 +200,33 @@ export function parseMuseum(
   });
   uniq(media, 'media');
   const mediaById = new Map(media.map((m) => [m.id, m]));
+  if (!preV4 && isObj(json.settings)) {
+    const sk = json.settings.sky;
+    const sp = 'settings.sky';
+    if (!isObj(sk)) err(sp, 'expected an object');
+    else if (sk.kind === 'gradient') {
+      const c = (k: 'top' | 'horizon' | 'bottom'): string => {
+        const v = sk[k];
+        if (typeof v !== 'string' || !COLOR_RE.test(v)) {
+          err(`${sp}.${k}`, "expected a colour like '#rrggbb'");
+          return '#ffffff';
+        }
+        return v;
+      };
+      settings.sky = { kind: 'gradient', top: c('top'), horizon: c('horizon'), bottom: c('bottom') };
+    } else if (sk.kind === 'panorama') {
+      const rotationDeg = num(sk, 'rotationDeg', sp);
+      let textureId = '';
+      if (typeof sk.textureId !== 'string' || sk.textureId === '') err(`${sp}.textureId`, 'expected a media id');
+      else {
+        textureId = sk.textureId;
+        const m = mediaById.get(textureId);
+        if (!m) err(`${sp}.textureId`, `no media with id '${textureId}'`);
+        else if (m.kind !== 'panorama') err(`${sp}.textureId`, `media '${textureId}' is not a panorama`);
+      }
+      settings.sky = { kind: 'panorama', textureId, rotationDeg };
+    } else err(`${sp}.kind`, "expected 'gradient' or 'panorama'");
+  }
   const wallIds = new Set(walls.map((w) => w.id));
   for (const { f, path } of finishes.splice(0)) {
     const m = mediaById.get(f.textureId!);
@@ -304,7 +344,13 @@ export function parseMuseum(
         const a: Area = { id, name: nm, rect };
         if (raw.floor !== undefined) a.floor = finish(raw.floor, `${p}.floor`);
         if (raw.ceiling !== undefined) a.ceiling = finish(raw.ceiling, `${p}.ceiling`);
-        if (a.floor === undefined && a.ceiling === undefined) err(p, "needs a 'floor' and/or a 'ceiling' finish");
+        if (raw.openSky !== undefined) {
+          if (raw.openSky === true) a.openSky = true;
+          else err(`${p}.openSky`, 'must be true when present');
+        }
+        if (a.ceiling !== undefined && raw.openSky !== undefined) err(p, "'ceiling' and 'openSky' are mutually exclusive");
+        if (a.floor === undefined && a.ceiling === undefined && raw.openSky === undefined)
+          err(p, "needs a 'floor' finish, a 'ceiling' finish and/or 'openSky'");
         return a;
       });
   uniq(areas, 'areas');

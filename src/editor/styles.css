@@ -178,8 +178,12 @@ body.lib-resizing * { cursor: row-resize !important; }
 .areas-layer.faint { opacity: 0.3; }
 .area-outline { fill: none; stroke: #b07412; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .area.ceiling-only .area-outline { stroke-dasharray: 5 3; }
+.area.open-sky .area-outline { stroke: #2b7fc4; stroke-dasharray: 5 3; }
 .area.selected .area-outline { stroke: var(--accent); stroke-width: 2.5; }
 .area-outline.draft { stroke: var(--accent); stroke-dasharray: 6 4; }
 /* stroke-width is set per render in screen pixels (SVG user units are metres here) */
 .area-label { fill: #5b3a00; pointer-events: none; font-weight: 600; paint-order: stroke; stroke: rgba(255,255,255,0.8); stroke-linejoin: round; }
 .stack-buttons { flex-wrap: wrap; }
+
+.sky-strip { height: 14px; border-radius: 4px; border: 1px solid var(--line); margin: 2px 0 6px; }
+.seg { display: flex; gap: 4px; margin: 2px 0 6px; }

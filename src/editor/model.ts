@@ -423,6 +423,10 @@ export function computeWarnings(m: Museum): EditorWarning[] {
       out.push({ kind: 'texture-missing', message: `A wall's texture is missing (${wall.id})`, target: { type: 'wall', id: wall.id } });
   }
 
+  const sky = m.settings.sky;
+  if (sky.kind === 'panorama' && findMedia(m, sky.textureId)?.kind !== 'panorama')
+    out.push({ kind: 'texture-missing', message: 'The sky panorama is missing', target: { type: 'settings', id: 'settings' } });
+
   const sp = m.settings.spawn;
   for (const wall of m.walls) {
     if (closestPointOnSegment(sp, wall.a, wall.b).dist < m.settings.wallThickness / 2) {

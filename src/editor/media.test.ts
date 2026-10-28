@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitSize, mediaKindOf, parsePaintingFilename, titleFromFilename } from './media';
+import { fitSize, isRoughlyEquirect, mediaKindOf, parsePaintingFilename, titleFromFilename } from './media';
 
 describe('media helpers', () => {
   it('fitSize caps the longest side and never upscales', () => {
@@ -32,5 +32,15 @@ describe('media helpers', () => {
   it('does not split on a leading or trailing separator', () => {
     expect(parsePaintingFilename('- Untitled.jpg')).toEqual({ artist: '', title: '- Untitled' });
     expect(parsePaintingFilename('Untitled -.jpg')).toEqual({ artist: '', title: 'Untitled -' });
+  });
+});
+
+describe('panorama helpers', () => {
+  it('caps at 4096 px and recognises ~2:1', () => {
+    expect(fitSize(8192, 4096, 4096)).toEqual({ width: 4096, height: 2048 });
+    expect(isRoughlyEquirect(4096, 2048)).toBe(true);
+    expect(isRoughlyEquirect(4000, 2100)).toBe(true);
+    expect(isRoughlyEquirect(3000, 2000)).toBe(false);
+    expect(isRoughlyEquirect(1000, 1000)).toBe(false);
   });
 });

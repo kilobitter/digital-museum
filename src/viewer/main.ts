@@ -68,7 +68,6 @@ async function main(): Promise<void> {
   document.body.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xf2f2f2);
   const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 200);
 
   const audio = new ZoneAudio();
@@ -175,6 +174,7 @@ async function main(): Promise<void> {
     } catch (e) {
       console.error('[museum] frame error', e);
     }
+    built.sky.follow(camera);
     renderer.render(scene, camera);
     debugTick?.();
   });

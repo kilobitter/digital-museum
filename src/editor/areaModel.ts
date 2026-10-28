@@ -1,4 +1,4 @@
-// Pure editor operations for floor/ceiling areas. No React, no DOM.
+// Pure editor operations for floor/ceiling/open-sky areas. No React, no DOM.
 import type { Area, Finish, Museum, Vec2 } from '../shared/museum';
 import { closestPointOnSegment } from '../shared/geometry';
 import { EPS, newId, round4, snapPoint, type RectHandle } from './model';
@@ -32,9 +32,27 @@ export function updateArea(m: Museum, id: string, patch: Partial<Omit<Area, 'id'
       const next = { ...a, ...patch };
       if (next.floor === undefined) delete next.floor;
       if (next.ceiling === undefined) delete next.ceiling;
+      if (next.openSky === undefined) delete next.openSky;
       return next;
     }),
   };
+}
+
+export type CeilingMode = 'none' | 'finish' | 'open';
+
+export const ceilingModeOf = (a: Area): CeilingMode => (a.openSky ? 'open' : a.ceiling ? 'finish' : 'none');
+
+/**
+ * Switch what an area does to the ceiling: nothing, its own finish (`dflt` is used when it has none yet), or open
+ * sky. An area must keep at least one of floor / ceiling / openSky, so 'none' is refused (museum returned as is)
+ * for an area without a floor.
+ */
+export function setCeilingMode(m: Museum, id: string, mode: CeilingMode, dflt: Finish): Museum {
+  const a = findArea(m, id);
+  if (!a) return m;
+  if (mode === 'none') return a.floor ? updateArea(m, id, { ceiling: undefined, openSky: undefined }) : m;
+  if (mode === 'open') return updateArea(m, id, { ceiling: undefined, openSky: true });
+  return updateArea(m, id, { ceiling: a.ceiling ?? { ...dflt }, openSky: undefined });
 }
 
 export function setAreaRect(m: Museum, id: string, patch: Partial<AreaRect>): Museum {
@@ -170,4 +188,12 @@ export function fillRoom(m: Museum, p: Vec2): AreaRect | null {
   if (![left, right, up, down].every(Number.isFinite)) return null;
   const rect = { x: round4(left), y: round4(up), w: round4(right - left), h: round4(down - up) };
   return rect.w > EPS && rect.h > EPS ? rect : null;
+}
+
+/** Colour of an open-sky area on the blueprint. */
+export const SKY_BLUE = '#8fc4f0';
+
+/** Short surface tag for the blueprint label: F = floor, C = ceiling finish, O = open sky, e.g. "F+O". */
+export function areaTag(a: Area): string {
+  return [a.floor ? 'F' : '', a.ceiling ? 'C' : '', a.openSky ? 'O' : ''].filter(Boolean).join('+');
 }

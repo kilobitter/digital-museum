@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Museum } from '../shared/museum';
 import { defaultMuseum, parseMuseum } from '../shared/validate';
 import {
-  addArea, deleteArea, duplicateArea, fillRoom, moveArea, reorderArea, resizeAreaRect, snapAreaMove, snapAreaPoint, updateArea,
+  addArea, areaTag, ceilingModeOf, deleteArea, duplicateArea, fillRoom, moveArea, reorderArea, resizeAreaRect, snapAreaMove, snapAreaPoint, setCeilingMode, updateArea,
 } from './areaModel';
 import { addMedia, addRoom, computeWarnings, mediaUsage, removeMedia, updateSettings } from './model';
 import { hitTestAreas } from './hit';
@@ -160,5 +160,55 @@ describe('texture usage and warnings with floor/ceiling/areas', () => {
     expect(w.filter((x) => x.target.type === 'area')).toHaveLength(2);
     expect(computeWarnings(updateSettings({ ...m, media: [] }, { floorFinish: f })).some((x) => x.kind === 'texture-missing')).toBe(true);
     expect(computeWarnings(used).filter((x) => x.kind === 'texture-missing')).toEqual([]);
+  });
+});
+
+describe('ceiling modes and sky', () => {
+  const fin = { color: '#112233', tileSize: 2 };
+  const one = () => {
+    const r = addArea(defaultMuseum(), { x: 0, y: 0, w: 2, h: 2 })!;
+    return { m: r.museum, id: r.id };
+  };
+  it('None / Finish / Open sky switch the area and stay valid', () => {
+    const { m, id } = one();
+    expect(ceilingModeOf(m.areas[0])).toBe('none');
+    const fm = setCeilingMode(m, id, 'finish', fin);
+    expect(fm.areas[0].ceiling).toEqual(fin);
+    expect(ceilingModeOf(fm.areas[0])).toBe('finish');
+    const om = setCeilingMode(fm, id, 'open', fin);
+    expect(om.areas[0].openSky).toBe(true);
+    expect(om.areas[0]).not.toHaveProperty('ceiling');
+    expect(areaTag(om.areas[0])).toBe('F+O');
+    const back = setCeilingMode(om, id, 'finish', fin);
+    expect(back.areas[0]).not.toHaveProperty('openSky');
+    expect(back.areas[0].ceiling).toEqual(fin);
+    const none = setCeilingMode(back, id, 'none', fin);
+    expect(none.areas[0]).not.toHaveProperty('ceiling');
+    for (const x of [fm, om, back, none]) expect(parseMuseum(JSON.parse(JSON.stringify(x))).ok).toBe(true);
+  });
+  it('keeps at least one of floor / ceiling / open sky', () => {
+    const { m, id } = one();
+    const ceilingOnly = updateArea(setCeilingMode(m, id, 'finish', fin), id, { floor: undefined });
+    expect(setCeilingMode(ceilingOnly, id, 'none', fin)).toBe(ceilingOnly);
+    const openOnly = updateArea(setCeilingMode(m, id, 'open', fin), id, { floor: undefined });
+    expect(setCeilingMode(openOnly, id, 'none', fin)).toBe(openOnly);
+    expect(areaTag(openOnly.areas[0])).toBe('O');
+    expect(areaTag(ceilingOnly.areas[0])).toBe('C');
+  });
+  it('duplicating keeps openSky', () => {
+    const { m, id } = one();
+    const o = setCeilingMode(m, id, 'open', fin);
+    expect(duplicateArea(o, id)!.museum.areas[1].openSky).toBe(true);
+  });
+  it('the sky panorama counts as usage and a missing one warns', () => {
+    let m = defaultMuseum();
+    const p = addMedia(m, { kind: 'panorama', file: 'media/p.jpg', name: 'p', width: 4096, height: 2048 });
+    m = updateSettings(p.museum, { sky: { kind: 'panorama', textureId: p.id, rotationDeg: 10 } });
+    expect(mediaUsage(m, p.id)).toBe(1);
+    expect(removeMedia(m, p.id)).toBeNull();
+    expect(computeWarnings(m).filter((x) => x.kind === 'texture-missing')).toEqual([]);
+    expect(computeWarnings({ ...m, media: [] }).some((x) => x.kind === 'texture-missing')).toBe(true);
+    const free = updateSettings(m, { sky: defaultMuseum().settings.sky });
+    expect(removeMedia(free, p.id)).not.toBeNull();
   });
 });

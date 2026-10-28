@@ -1,7 +1,7 @@
 // Library tab helpers: persisted selection and keyboard navigation (pure, unit-tested).
-export type LibraryTab = 'image' | 'texture' | 'audio';
+export type LibraryTab = 'image' | 'texture' | 'panorama' | 'audio';
 
-export const TAB_ORDER: readonly LibraryTab[] = ['image', 'texture', 'audio'];
+export const TAB_ORDER: readonly LibraryTab[] = ['image', 'texture', 'panorama', 'audio'];
 export const TAB_STORAGE_KEY = 'museum-editor-library-tab';
 
 /** Anything that is not a known tab falls back to Paintings. */

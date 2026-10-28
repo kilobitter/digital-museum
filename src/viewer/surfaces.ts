@@ -1,4 +1,4 @@
-// Floor / ceiling surfaces: world-aligned quads and the plan for area layers.
+// Floor / ceiling surfaces: world-aligned quads, floor area layers and the flat ceiling decomposition.
 import * as THREE from 'three';
 import type { Area, Finish, Museum } from '../shared/museum';
 
@@ -63,23 +63,98 @@ export function stackLevels(rects: readonly Rect[]): number[] {
   return levels;
 }
 
-/**
- * Quads of every area on one surface, floor and ceiling levelled independently. Floor quads sit at
- * LAYER_STEP * level above the floor; ceiling quads at LAYER_STEP * level below the ceiling. Ceiling
- * areas are skipped when the museum has no ceiling.
- */
-export function areaQuads(m: Museum, surface: 'floor' | 'ceiling'): AreaQuad[] {
-  if (surface === 'ceiling' && !m.settings.ceiling) return [];
+/** Quads of every floor area. Floors keep the overlap-level approach: floor quads sit at LAYER_STEP * level above the floor. */
+export function areaQuads(m: Museum): AreaQuad[] {
   const items: { area: Area; layer: number; finish: Finish }[] = [];
   m.areas.forEach((area, layer) => {
-    const finish = surface === 'floor' ? area.floor : area.ceiling;
-    if (finish) items.push({ area, layer, finish });
+    if (area.floor) items.push({ area, layer, finish: area.floor });
   });
   const levels = stackLevels(items.map((it) => it.area.rect));
-  return items.map((it, i) => {
-    const off = LAYER_STEP * levels[i];
-    return { ...it, rect: it.area.rect, level: levels[i], y: surface === 'floor' ? off : m.settings.wallHeight - off };
-  });
+  return items.map((it, i) => ({ ...it, rect: it.area.rect, level: levels[i], y: LAYER_STEP * levels[i] }));
+}
+
+export interface CeilingGroup {
+  finish: Finish;
+  rects: Rect[];
+}
+export interface CeilingPlan {
+  /** Ceiling rects grouped by finish (the base finish first when it has any). All sit at wallHeight. */
+  groups: CeilingGroup[];
+  /** Rects with no ceiling (open sky). They produce no geometry. */
+  open: Rect[];
+}
+
+const finishId = (f: Finish): string => `${f.textureId ?? ''}|${f.color.toLowerCase()}|${f.tileSize}`;
+const EPS = 1e-9;
+
+/**
+ * Flat decomposition of the ceiling: the `bounds` are split into grid cells along the edges of every area that
+ * has a `ceiling` or `openSky`; each cell takes the result of the top-most (last) such area covering it, else the
+ * `base` finish. Cells of equal result are merged along rows and then across identical row spans, so the number of
+ * rects stays small. Floor-only areas are ignored. Nothing is stacked: every quad sits at the same height.
+ */
+export function decomposeCeiling(bounds: Rect, base: Finish, areas: readonly Area[]): CeilingPlan {
+  const rel = areas.filter((a) => a.ceiling || a.openSky);
+  const edges = (lo: number, hi: number, get: (a: Area) => [number, number]): number[] => {
+    const v = [lo, hi];
+    for (const a of rel) for (const e of get(a)) if (e > lo + EPS && e < hi - EPS) v.push(e);
+    v.sort((p, q) => p - q);
+    return v.filter((e, i) => i === 0 || e - v[i - 1] > EPS);
+  };
+  const xs = edges(bounds.x, bounds.x + bounds.w, (a) => [a.rect.x, a.rect.x + a.rect.w]);
+  const ys = edges(bounds.y, bounds.y + bounds.h, (a) => [a.rect.y, a.rect.y + a.rect.h]);
+
+  const finishes = new Map<string, Finish>([[finishId(base), base]]);
+  const OPEN = 'open';
+  const pick = (cx: number, cy: number): string => {
+    for (let i = rel.length - 1; i >= 0; i--) {
+      const r = rel[i].rect;
+      if (cx > r.x && cx < r.x + r.w && cy > r.y && cy < r.y + r.h) {
+        const f = rel[i].ceiling;
+        if (!f) return OPEN;
+        const id = finishId(f);
+        if (!finishes.has(id)) finishes.set(id, f);
+        return id;
+      }
+    }
+    return finishId(base);
+  };
+
+  const byKey = new Map<string, Rect[]>();
+  const add = (key: string, r: Rect) => {
+    const l = byKey.get(key);
+    if (l) l.push(r);
+    else byKey.set(key, [r]);
+  };
+  // Merge runs along each row, then extend a run downward while the next row has an identical span and key.
+  let prev = new Map<string, Rect>();
+  for (let j = 0; j + 1 < ys.length; j++) {
+    const cur = new Map<string, Rect>();
+    let i = 0;
+    while (i + 1 < xs.length) {
+      const key = pick((xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2);
+      let k = i + 1;
+      while (k + 1 < xs.length && pick((xs[k] + xs[k + 1]) / 2, (ys[j] + ys[j + 1]) / 2) === key) k++;
+      const span = `${i}|${k}|${key}`;
+      const above = prev.get(span);
+      if (above) {
+        above.h = ys[j + 1] - above.y;
+        cur.set(span, above);
+      } else {
+        const r = { x: xs[i], y: ys[j], w: xs[k] - xs[i], h: ys[j + 1] - ys[j] };
+        add(key, r);
+        cur.set(span, r);
+      }
+      i = k;
+    }
+    prev = cur;
+  }
+  const groups: CeilingGroup[] = [];
+  for (const [key, f] of finishes) {
+    const rects = byKey.get(key);
+    if (rects?.length) groups.push({ finish: f, rects });
+  }
+  return { groups, open: byKey.get(OPEN) ?? [] };
 }
 
 /** Key that identifies one material: texture (when it loaded) and colour. */

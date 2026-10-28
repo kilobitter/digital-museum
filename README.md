@@ -25,9 +25,9 @@ it is taken, the server stops instead of quietly picking another port.
 
 - The museum lives in `public/museum/museum.json`, its images and audio in `public/museum/media/`.
   The editor saves there automatically (and with Ctrl/Cmd+S).
-- The media library has three sections: **Paintings**, **Textures** (wall finishes) and **Audio**.
+- The media library has four sections: **Paintings**, **Textures** (wall, floor and ceiling finishes), **Panoramas** (sky images) and **Audio**.
   Add files with the section's Add button or by dropping them on it. Paintings are resized to 1600 px
-  (longest side, JPEG), textures to 1024 px. You can drop or pick hundreds of files at once: they upload
+  (longest side, JPEG), textures to 1024 px, panoramas to 4096 px (JPEG, quality 0.85). You can drop or pick hundreds of files at once: they upload
   three at a time with an "n / total" counter, one failing file never stops the rest, and files already
   in the library are skipped (same original name and a known, equal size).
 - **Filename convention** for paintings: `Artist - Title.jpg` fills the artist and title automatically
@@ -54,12 +54,27 @@ it is taken, the server stops instead of quietly picking another port.
     covers the rectangle bounded by the nearest walls in the four directions, ignoring doorway gaps;
     nothing is made when a side is open).
   - Stacking: later areas sit on top of earlier ones. Use Bring forward / Send backward / To front /
-    To back in the area inspector. In the visitor view each overlapping level is 1 mm higher (floor) or lower
-    (ceiling), and all areas with the same finish are merged into one mesh, so area count does not add
-    draw calls (only distinct finishes do).
-  - Ceiling areas only show when the ceiling is switched on in the settings.
-- Older `museum.json` files (format v1 and v2) are upgraded automatically the next time they are saved.
-- `node scripts/make-sample.mjs <outDir>` writes a sample museum to a folder of your choice. It refuses
+    To back in the area inspector. In the visitor view each overlapping floor level is 1 mm higher, and
+    all areas with the same finish are merged into one mesh, so area count does not add draw calls
+    (only distinct finishes do). Ceilings are not layered: the viewer cuts the ceiling into a flat grid
+    along the area edges and the top-most area with a ceiling finish or open sky wins in each cell.
+  - Each area has a **Floor** (optional finish) and a **Ceiling** choice: **None** (the area does not
+    touch the ceiling), **Finish** (its own ceiling finish) or **Open sky** (no ceiling there). An area
+    needs at least one of floor, ceiling finish or open sky. Open-sky areas are drawn with a blue hatch
+    on the blueprint and tagged `O` (for example `F+O`).
+  - Ceiling settings only show when the ceiling is switched on in the museum settings.
+- **Sky**: set in the museum settings. It is what you see beyond the walls and through open-sky areas.
+  - *Gradient*: three colours (top, horizon, bottom), blended smoothly around the horizon.
+  - *Panorama*: an equirectangular image from the Panoramas tab, plus a rotation (-180 to 180 degrees,
+    clockwise seen from above; 0 puts the image centre straight up the blueprint). The image should be
+    **2:1** (the editor warns otherwise) and is resized to at most **4096 px**. Good free sources:
+    [Poly Haven](https://polyhaven.com/hdris) HDRIs, which are CC0. Download the tonemapped **JPG**
+    (not the .hdr/.exr), 4k is plenty. If the panorama file is missing the viewer falls back to the
+    default gradient and shows a warning. The sky is not lit or fogged and does not move when you walk.
+  - The lighting inside the museum is the same everywhere, so a very bright or dark panorama does not
+    change how open areas are lit.
+- Older `museum.json` files (format v1, v2 and v3) are upgraded automatically the next time they are saved.
+- `node scripts/make-sample.mjs <outDir>` writes a sample museum (with a small open-sky courtyard) to a folder of your choice. It refuses
   to overwrite `public/museum` unless you pass `--force`.
 
 The visitor view is `https://localhost:5317/` (the Preview button in the editor).
@@ -94,7 +109,7 @@ Add `?debug` to the viewer URL (for example `https://localhost:5317/?debug`) to 
 draw calls, triangles, GPU textures, resident paintings and decoded audio zones.
 
 To stress-test, `node scripts/make-stress.mjs <outDir>` writes a museum with 90 rooms, 500 works and 90 zones
-into a folder of your choice (it refuses to write into `public/museum`).
+into a folder of your choice (it refuses to write into `public/museum`). It includes a few open-sky courtyards.
 
 ## Deploying to GitHub Pages
 1. Create a GitHub repository and push this project to its `main` branch.

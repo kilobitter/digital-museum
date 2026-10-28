@@ -9,7 +9,10 @@ describe('libraryTabs', () => {
     expect(parseTab('bogus')).toBe('image');
   });
   it('navigates with arrows (wrapping), Home and End', () => {
+    expect(parseTab('panorama')).toBe('panorama');
     expect(tabForKey('image', 'ArrowRight')).toBe('texture');
+    expect(tabForKey('texture', 'ArrowRight')).toBe('panorama');
+    expect(tabForKey('panorama', 'ArrowRight')).toBe('audio');
     expect(tabForKey('audio', 'ArrowRight')).toBe('image');
     expect(tabForKey('image', 'ArrowLeft')).toBe('audio');
     expect(tabForKey('texture', 'Home')).toBe('image');

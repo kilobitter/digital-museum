@@ -4,9 +4,9 @@ import sample from '../../public/museum/museum.json';
 
 type Any = Record<string, any>;
 const base = (): Any => ({
-  version: 3,
+  version: 4,
   name: 'T',
-  settings: { wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, wallFinish: { color: '#ffffff', tileSize: 1 }, floorFinish: { color: '#e6e3dd', tileSize: 1 }, ceilingFinish: { color: '#ffffff', tileSize: 1 }, spawn: { x: 0, y: 0, yawDeg: 0 } },
+  settings: { wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, wallFinish: { color: '#ffffff', tileSize: 1 }, floorFinish: { color: '#e6e3dd', tileSize: 1 }, ceilingFinish: { color: '#ffffff', tileSize: 1 }, sky: { kind: 'gradient', top: '#8fb8de', horizon: '#eef2f5', bottom: '#d8d4cc' }, spawn: { x: 0, y: 0, yawDeg: 0 } },
   walls: [{ id: 'w1', a: { x: 0, y: 0 }, b: { x: 4, y: 0 } }],
   works: [{ id: 'k1', mediaId: 'i1', wallId: 'w1', side: 1, t: 1, centerHeight: 1.5, width: 1 }],
   zones: [{ id: 'z1', name: 'z', mediaId: 'a1', shape: { kind: 'rect', x: 0, y: 0, w: 2, h: 2 }, volume: 0.5, fade: 1 }],
@@ -29,9 +29,9 @@ const expectError = (m: unknown, fragment: string) => {
 describe('defaultMuseum', () => {
   it('is valid and empty', () => {
     const d = defaultMuseum();
-    expect(d.version).toBe(3);
+    expect(d.version).toBe(4);
     expect(d.areas).toEqual([]);
-    expect(d.settings).toEqual({ wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, wallFinish: { color: '#ffffff', tileSize: 1 }, floorFinish: { color: '#e6e3dd', tileSize: 1 }, ceilingFinish: { color: '#ffffff', tileSize: 1 }, spawn: { x: 0, y: 0, yawDeg: 0 } });
+    expect(d.settings).toEqual({ wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, wallFinish: { color: '#ffffff', tileSize: 1 }, floorFinish: { color: '#e6e3dd', tileSize: 1 }, ceilingFinish: { color: '#ffffff', tileSize: 1 }, sky: { kind: 'gradient', top: '#8fb8de', horizon: '#eef2f5', bottom: '#d8d4cc' }, spawn: { x: 0, y: 0, yawDeg: 0 } });
     expect(parseMuseum(d).ok).toBe(true);
   });
 });
@@ -51,7 +51,7 @@ describe('parseMuseum', () => {
     expect(parseMuseum(v).ok).toBe(false);
   });
   it('rejects wrong version', () => {
-    for (const v of [0, 4, '3', undefined]) {
+    for (const v of [0, 5, '4', undefined]) {
       const m = base(); m.version = v;
       expectError(m, 'version');
     }
@@ -155,7 +155,7 @@ describe('format v2', () => {
     const r = parseMuseum(m);
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.museum.version).toBe(3);
+      expect(r.museum.version).toBe(4);
       expect(r.museum.settings.wallFinish.textureId).toBe('t1');
       expect(r.museum.media[0].title).toBe('a');
       expect(r.museum.walls[0].finish).toEqual({ color: '#FF00ff', tileSize: 2 });
@@ -215,16 +215,17 @@ describe('v1 migration', () => {
     m.works = [{ id: 'k1', mediaId: 'i1', wallId: 'w1', side: 1, t: 1, centerHeight: 1.5, width: 1, title: 'First', artist: 'A' }];
     return m;
   };
-  it('moves labels to media, adds default finish, sets version 3 (v1 -> v3)', () => {
+  it('moves labels to media, adds default finish, sets version 4 (v1 -> v4)', () => {
     const m = v1();
     m.works[0].description = 'desc';
     const r = parseMuseum(m);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.museum.version).toBe(3);
+    expect(r.museum.version).toBe(4);
     expect(r.museum.settings.wallFinish).toEqual({ color: '#ffffff', tileSize: 1 });
     expect(r.museum.settings.floorFinish).toEqual({ color: '#e6e3dd', tileSize: 1 });
     expect(r.museum.settings.ceilingFinish).toEqual({ color: '#ffffff', tileSize: 1 });
+    expect(r.museum.settings.sky).toEqual({ kind: 'gradient', top: '#8fb8de', horizon: '#eef2f5', bottom: '#d8d4cc' });
     expect(r.museum.areas).toEqual([]);
     const img = r.museum.media.find((x) => x.id === 'i1')!;
     expect(img).toMatchObject({ title: 'First', artist: 'A', description: 'desc' });
@@ -265,7 +266,7 @@ describe('v1 migration', () => {
     const copy = JSON.parse(JSON.stringify(sample));
     const r = parseMuseum(copy);
     expect(r.ok ? [] : r.errors).toEqual([]);
-    expect(r.ok && r.museum.version).toBe(3);
+    expect(r.ok && r.museum.version).toBe(4);
     expect(JSON.stringify(copy)).toBe(JSON.stringify(sample)); // input not mutated
   });
 });
@@ -326,16 +327,83 @@ describe('format v3', () => {
     m = base(); m.areas = [area()]; m.areas[0].name = 5;
     expectError(m, 'areas[0].name');
   });
-  it('migrates v2 to v3 with default finishes and no areas', () => {
+  it('migrates v2 to v4 with default finishes and no areas', () => {
     const m = base();
     m.version = 2;
     delete m.settings.floorFinish; delete m.settings.ceilingFinish; delete m.areas;
     const r = parseMuseum(m);
     expect(r.ok ? [] : r.errors).toEqual([]);
     if (!r.ok) return;
-    expect(r.museum.version).toBe(3);
+    expect(r.museum.version).toBe(4);
     expect(r.museum.settings.floorFinish).toEqual({ color: '#e6e3dd', tileSize: 1 });
     expect(r.museum.settings.ceilingFinish).toEqual({ color: '#ffffff', tileSize: 1 });
     expect(r.museum.areas).toEqual([]);
+  });
+});
+
+describe('format v4', () => {
+  const pano = { id: 'p1', kind: 'panorama', file: 'media/p.jpg', name: 'p.jpg', width: 4096, height: 2048 };
+  const withPano = (): Any => { const m = base(); m.media.push({ ...pano }); return m; };
+  it('accepts a gradient and a panorama sky', () => {
+    let r = parseMuseum(base());
+    expect(r.ok && r.museum.settings.sky).toEqual({ kind: 'gradient', top: '#8fb8de', horizon: '#eef2f5', bottom: '#d8d4cc' });
+    const m = withPano(); m.settings.sky = { kind: 'panorama', textureId: 'p1', rotationDeg: -45 };
+    r = parseMuseum(m);
+    expect(r.ok ? [] : r.errors).toEqual([]);
+    expect(r.ok && r.museum.settings.sky).toEqual({ kind: 'panorama', textureId: 'p1', rotationDeg: -45 });
+  });
+  it('rejects bad skies', () => {
+    let m = base(); delete m.settings.sky;
+    expectError(m, 'settings.sky');
+    m = base(); m.settings.sky.kind = 'cube';
+    expectError(m, 'settings.sky.kind');
+    m = base(); m.settings.sky.top = 'blue';
+    expectError(m, 'settings.sky.top');
+    m = base(); delete m.settings.sky.bottom;
+    expectError(m, 'settings.sky.bottom');
+    m = withPano(); m.settings.sky = { kind: 'panorama', textureId: 'nope', rotationDeg: 0 };
+    expectError(m, "settings.sky.textureId: no media with id 'nope'");
+    m = withPano(); m.settings.sky = { kind: 'panorama', textureId: 't1', rotationDeg: 0 };
+    expectError(m, 'settings.sky.textureId: media');
+    m = withPano(); m.settings.sky = { kind: 'panorama', textureId: 'p1', rotationDeg: Infinity };
+    expectError(m, 'settings.sky.rotationDeg');
+    m = withPano(); m.settings.sky = { kind: 'panorama', textureId: 'p1' };
+    expectError(m, 'settings.sky.rotationDeg');
+  });
+  it('panorama media needs width/height; hanging or texturing it is rejected', () => {
+    let m = withPano(); delete m.media[3].width;
+    expectError(m, 'media[3].width');
+    m = withPano(); m.works[0].mediaId = 'p1';
+    expectError(m, 'not an image');
+    m = withPano(); m.settings.floorFinish.textureId = 'p1';
+    expectError(m, 'settings.floorFinish.textureId: media');
+  });
+  it('v3 files do not know panoramas', () => {
+    const m = withPano(); m.version = 3; delete m.settings.sky;
+    expectError(m, 'media[3].kind');
+  });
+  it('areas: openSky alone is enough, must be true, excludes ceiling', () => {
+    const o = (): Any => ({ id: 'o', name: 'Yard', rect: { x: 0, y: 0, w: 2, h: 2 }, openSky: true });
+    let m = base(); m.areas = [o()];
+    let r = parseMuseum(m);
+    expect(r.ok ? [] : r.errors).toEqual([]);
+    expect(r.ok && r.museum.areas[0].openSky).toBe(true);
+    m = base(); m.areas = [{ ...o(), floor: { color: '#112233', tileSize: 1 } }];
+    expect(errorsOf(m)).toEqual([]);
+    m = base(); m.areas = [{ ...o(), openSky: false }];
+    expectError(m, 'areas[0].openSky');
+    m = base(); m.areas = [{ ...o(), openSky: 1 }];
+    expectError(m, 'areas[0].openSky');
+    m = base(); m.areas = [{ ...o(), ceiling: { color: '#000000', tileSize: 1 } }];
+    expectError(m, 'mutually exclusive');
+    m = base(); m.areas = [{ id: 'x', name: '', rect: { x: 0, y: 0, w: 1, h: 1 } }];
+    expectError(m, 'areas[0]: needs');
+  });
+  it('migrates v3 to v4 with the default sky', () => {
+    const m = base(); m.version = 3; delete m.settings.sky;
+    const r = parseMuseum(m);
+    expect(r.ok ? [] : r.errors).toEqual([]);
+    expect(r.ok && r.museum.version).toBe(4);
+    expect(r.ok && r.museum.settings.sky.kind).toBe('gradient');
   });
 });
