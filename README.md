@@ -42,7 +42,23 @@ it is taken, the server stops instead of quietly picking another port.
   inspector swaps it.
 - Walls use the default finish from the museum settings, or their own (colour, or texture times
   colour, tiled at a size in metres).
-- Older `museum.json` files (format v1) are upgraded automatically the next time they are saved.
+- **Floors and ceilings**: the museum settings hold a default floor finish and ceiling finish (colour,
+  or texture times colour, tiled at a size in metres). Floor and ceiling textures are aligned to the
+  world origin, so neighbouring surfaces with the same finish continue seamlessly.
+- **Areas** are rectangles that override the floor and/or ceiling finish inside them. They live on their
+  own editing layer so walls never get in the way: press `A` (or click the layer button at the top of
+  the toolbar) to switch between **Build** (walls, works, zones, spawn) and **Areas**. On the Areas layer
+  walls and works are dimmed and locked; on the Build layer areas are faint and locked.
+  - Tools: Select (move, drag a corner to resize, Delete, Ctrl/Cmd+D duplicates), Rect (drag; edges snap
+    to the grid and to wall centre lines within 0.3 m) and **Fill room** (click inside a room: the area
+    covers the rectangle bounded by the nearest walls in the four directions, ignoring doorway gaps;
+    nothing is made when a side is open).
+  - Stacking: later areas sit on top of earlier ones. Use Bring forward / Send backward / To front /
+    To back in the area inspector. In the visitor view each overlapping level is 1 mm higher (floor) or lower
+    (ceiling), and all areas with the same finish are merged into one mesh, so area count does not add
+    draw calls (only distinct finishes do).
+  - Ceiling areas only show when the ceiling is switched on in the settings.
+- Older `museum.json` files (format v1 and v2) are upgraded automatically the next time they are saved.
 - `node scripts/make-sample.mjs <outDir>` writes a sample museum to a folder of your choice. It refuses
   to overwrite `public/museum` unless you pass `--force`.
 

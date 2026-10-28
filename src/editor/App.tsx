@@ -15,7 +15,8 @@ import {
 } from './model';
 import { canRedo, canUndo, clearHistory, commitFrom, createHistory, push, redo, replace, undo, type History } from './history';
 import { shouldScheduleAutosave } from './autosave';
-import { TOOLS, type Selection, type Tool } from './types';
+import { LAYER_KEY, toolsFor, type Layer, type Selection, type Tool } from './types';
+import { deleteArea, duplicateArea, findArea } from './areaModel';
 
 type Action =
   | { type: 'reset'; museum: Museum }
@@ -72,6 +73,7 @@ export function App() {
   const [saveErrors, setSaveErrors] = useState<string[]>([]);
   const [showErrors, setShowErrors] = useState(false);
   const [tool, setTool] = useState<Tool>('select');
+  const [layer, setLayerState] = useState<Layer>('build');
   const [selection, setSelection] = useState<Selection>(null);
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -88,6 +90,9 @@ export function App() {
   const museum = hist.present;
   const presentRef = useRef(museum);
   presentRef.current = museum;
+  const layerRef = useRef(layer);
+  layerRef.current = layer;
+  const selRef = useRef<Selection>(null);
   const savedRef = useRef<Museum | null>(null);
   savedRef.current = saved;
   const savingRef = useRef(false);
@@ -162,7 +167,18 @@ export function App() {
     selection?.type === 'wall' ? (findWall(museum, selection.id) ? selection : null)
     : selection?.type === 'work' ? (findWork(museum, selection.id) ? selection : null)
     : selection?.type === 'zone' ? (findZone(museum, selection.id) ? selection : null)
+    : selection?.type === 'area' ? (layer === 'areas' && findArea(museum, selection.id) ? selection : null)
+    : selection && layer === 'areas' ? null // build things cannot be selected on the Areas layer
     : selection;
+
+  const setLayer = useCallback((next: Layer) => {
+    setLayerState(next);
+    setSelection(null);
+    setTool('select');
+    canvas.current?.cancelDraft();
+  }, []);
+
+  selRef.current = sel;
 
   const change = useCallback((m: Museum, key?: string) => dispatch({ type: 'push', museum: m, key }), []);
   const deleteSelection = useCallback(() => {
@@ -170,6 +186,7 @@ export function App() {
     if (sel.type === 'wall') dispatch({ type: 'edit', fn: (m) => deleteWall(m, sel.id) });
     else if (sel.type === 'work') dispatch({ type: 'edit', fn: (m) => deleteWork(m, sel.id) });
     else if (sel.type === 'zone') dispatch({ type: 'edit', fn: (m) => deleteZone(m, sel.id) });
+    else if (sel.type === 'area') dispatch({ type: 'edit', fn: (m) => deleteArea(m, sel.id) });
     else return;
     setSelection(null);
   }, [sel]);
@@ -189,6 +206,18 @@ export function App() {
         dispatch({ type: e.shiftKey ? 'redo' : 'undo' });
         return;
       }
+      if (mod && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        const cur = selRef.current;
+        if (cur?.type === 'area') {
+          const r = duplicateArea(presentRef.current, cur.id);
+          if (r) {
+            dispatch({ type: 'push', museum: r.museum });
+            setSelection({ type: 'area', id: r.id });
+          }
+        }
+        return;
+      }
       if (mod && e.key.toLowerCase() === 'y') {
         e.preventDefault();
         dispatch({ type: 'redo' });
@@ -204,12 +233,16 @@ export function App() {
         deleteSelection();
         return;
       }
-      const t = TOOLS.find((x) => x.key.toLowerCase() === e.key.toLowerCase());
+      if (e.key.toLowerCase() === LAYER_KEY.toLowerCase()) {
+        setLayer(layerRef.current === 'areas' ? 'build' : 'areas');
+        return;
+      }
+      const t = toolsFor(layerRef.current).find((x) => x.key.toLowerCase() === e.key.toLowerCase());
       if (t) setTool(t.tool);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [saveNow, deleteSelection]);
+  }, [saveNow, deleteSelection, setLayer]);
 
   // ----- media -----
   const audioMediaId =
@@ -292,7 +325,7 @@ export function App() {
       const item = museum.media.find((x) => x.id === id);
       if (!item) return;
       if (!localRef.current) return;
-      if (removeMedia(museum, id) === null) return notify('This file is still used by a work, zone or wall finish.');
+      if (removeMedia(museum, id) === null) return notify('This file is still used by a work, zone, wall/floor/ceiling finish or area.');
       try {
         await deleteMediaFile(item.file);
       } catch (e) {
@@ -308,6 +341,7 @@ export function App() {
   const selectMedia = (id: string | null) => {
     setSelectedMediaId(id);
     if (id && museum.media.find((x) => x.id === id)?.kind === 'image') {
+      setLayerState('build');
       setTool('work');
       setRandomHang(false);
     }
@@ -315,6 +349,7 @@ export function App() {
 
   const toggleRandom = () => {
     setRandomHang((r) => !r);
+    setLayerState('build');
     setTool('work');
   };
 
@@ -400,7 +435,15 @@ export function App() {
       )}
 
       <nav className="toolbar">
-        {TOOLS.map((t) => (
+        <button
+          className={'layer-switch ' + layer}
+          onClick={() => setLayer(layer === 'areas' ? 'build' : 'areas')}
+          title={`Switch layer (${LAYER_KEY}). Build: walls, works, zones, spawn. Areas: floor and ceiling areas.`}
+        >
+          <span className="tool-key">{LAYER_KEY}</span>
+          <span>{layer === 'areas' ? 'Areas' : 'Build'}</span>
+        </button>
+        {toolsFor(layer).map((t) => (
           <button key={t.tool} className={tool === t.tool ? 'active' : ''} onClick={() => setTool(t.tool)} title={`${t.label} (${t.key}): ${t.hint}`}>
             <span className="tool-key">{t.key}</span>
             <span>{t.label}</span>
@@ -413,6 +456,7 @@ export function App() {
           handleRef={canvas}
           museum={museum}
           tool={tool}
+          layer={layer}
           selection={sel}
           selectedMediaId={selectedMediaId && museum.media.find((x) => x.id === selectedMediaId)?.kind === 'image' ? selectedMediaId : null}
           randomHang={randomHang}
@@ -424,7 +468,7 @@ export function App() {
           onNotice={notify}
           onInteraction={setInteracting}
         />
-        <div className="hintbar">{tool === 'work' && randomHang ? 'Random painting: click a wall face to hang a painting you have not hung yet.' : TOOLS.find((t) => t.tool === tool)?.hint}</div>
+        <div className="hintbar">{layer === 'build' && tool === 'work' && randomHang ? 'Random painting: click a wall face to hang a painting you have not hung yet.' : toolsFor(layer).find((t) => t.tool === tool)?.hint}</div>
         {notice && <div className="toast" onClick={() => setNotice(null)}>{notice}</div>}
         {dropping && <div className="dropveil">Drop audio here, or images onto a library section</div>}
       </main>
@@ -442,7 +486,16 @@ export function App() {
                 <li key={i}>
                   <button
                     className="link"
-                    onClick={() => setSelection(w.target.type === 'spawn' ? { type: 'spawn' } : w.target.type === 'settings' ? null : { type: w.target.type, id: w.target.id })}
+                    onClick={() => {
+                      const t = w.target;
+                      if (t.type === 'settings') return;
+                      const want: Layer = t.type === 'area' ? 'areas' : 'build';
+                      if (want !== layer) {
+                        setLayerState(want);
+                        setTool('select');
+                      }
+                      setSelection(t.type === 'spawn' ? { type: 'spawn' } : { type: t.type, id: t.id });
+                    }}
                   >
                     {w.message}
                   </button>

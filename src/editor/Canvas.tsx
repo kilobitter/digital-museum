@@ -6,7 +6,11 @@ import {
   moveWall, moveZone, resizeCircle, resizeRect, round4, setSpawn, setWorkT, snapPoint, snapValue, updateZone, type EndpointRef,
 } from './model';
 import { hitTest, workSegment, zoneHandles } from './hit';
-import type { Selection, Tool } from './types';
+import { areaHandles, hitTestAreas } from './hit';
+import {
+  addArea, fillRoom, findArea, MIN_AREA_SIZE, moveArea, rectFromDrag, resizeAreaRect, snapAreaMove, snapAreaPoint, updateArea,
+} from './areaModel';
+import type { Layer, Selection, Tool } from './types';
 
 export interface CanvasHandle {
   /** Cancels an in-progress wall chain / draft. Returns true if something was cancelled. */
@@ -17,6 +21,7 @@ export interface CanvasHandle {
 interface Props {
   museum: Museum;
   tool: Tool;
+  layer: Layer;
   selection: Selection;
   selectedMediaId: string | null;
   /** Hang a randomly chosen painting on each click instead of the selected one. */
@@ -45,12 +50,15 @@ type Drag =
   | { kind: 'zone'; base: Museum; id: string; start: Vec2; moved: boolean }
   | { kind: 'handle'; base: Museum; id: string; handle: 'nw' | 'ne' | 'se' | 'sw' | 'radius'; moved: boolean }
   | { kind: 'spawn'; base: Museum; start: Vec2; moved: boolean }
-  | { kind: 'spawnTool'; base: Museum; start: Vec2; moved: boolean };
+  | { kind: 'spawnTool'; base: Museum; start: Vec2; moved: boolean }
+  | { kind: 'area'; base: Museum; id: string; start: Vec2; moved: boolean }
+  | { kind: 'areaHandle'; base: Museum; id: string; handle: 'nw' | 'ne' | 'se' | 'sw'; moved: boolean };
 
 type Draft =
   | { kind: 'room'; start: Vec2 }
   | { kind: 'zoneRect'; start: Vec2 }
-  | { kind: 'zoneCircle'; start: Vec2 };
+  | { kind: 'zoneCircle'; start: Vec2 }
+  | { kind: 'areaRect'; start: Vec2 };
 
 const ENDPOINT_SNAP_M = 0.3;
 const PICK_PX = 9;
@@ -63,6 +71,7 @@ function niceStep(minM: number): number {
 function boundsOf(m: Museum): { x0: number; y0: number; x1: number; y1: number } {
   const xs: number[] = [m.settings.spawn.x], ys: number[] = [m.settings.spawn.y];
   for (const w of m.walls) xs.push(w.a.x, w.b.x), ys.push(w.a.y, w.b.y);
+  for (const a of m.areas) xs.push(a.rect.x, a.rect.x + a.rect.w), ys.push(a.rect.y, a.rect.y + a.rect.h);
   for (const z of m.zones) {
     if (z.shape.kind === 'rect') xs.push(z.shape.x, z.shape.x + z.shape.w), ys.push(z.shape.y, z.shape.y + z.shape.h);
     else xs.push(z.shape.cx - z.shape.r, z.shape.cx + z.shape.r), ys.push(z.shape.cy - z.shape.r, z.shape.cy + z.shape.r);
@@ -71,7 +80,7 @@ function boundsOf(m: Museum): { x0: number; y0: number; x1: number; y1: number }
 }
 
 export function Canvas(p: Props) {
-  const { museum: m, tool, selection } = p;
+  const { museum: m, tool, selection, layer } = p;
   const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -231,6 +240,15 @@ export function Canvas(p: Props) {
 
     switch (tool) {
       case 'select': {
+        if (layer === 'areas') {
+          const ah = hitTestAreas(m, pt, tol, selection?.type === 'area' ? selection.id : null);
+          if (!ah) return p.onSelect(null);
+          if (ah.type === 'area') {
+            p.onSelect({ type: 'area', id: ah.id });
+            drag.current = { kind: 'area', base: m, id: ah.id, start: snapPoint(pt, grid), moved: false };
+          } else drag.current = { kind: 'areaHandle', base: m, id: ah.id, handle: ah.handle, moved: false };
+          break;
+        }
         const hit = hitTest(m, pt, tol, selection?.type === 'zone' ? selection.id : null);
         if (!hit) return p.onSelect(null);
         switch (hit.type) {
@@ -285,6 +303,21 @@ export function Canvas(p: Props) {
         setDraft({ kind: tool, start: snapPoint(pt, grid) });
         p.onInteraction(true);
         break;
+      case 'areaRect':
+        setDraft({ kind: 'areaRect', start: snapAreaPoint(m, pt, grid) });
+        p.onInteraction(true);
+        break;
+      case 'areaFill': {
+        const rect = fillRoom(m, pt);
+        const r = rect && addArea(m, rect);
+        if (!r) {
+          p.onNotice('Click inside a room closed on all four sides (walls to the left, right, above and below).');
+          return;
+        }
+        p.onChange(r.museum);
+        p.onSelect({ type: 'area', id: r.id });
+        break;
+      }
       case 'work': {
         let mediaId = p.selectedMediaId;
         if (p.randomHang) {
@@ -330,7 +363,7 @@ export function Canvas(p: Props) {
       return;
     }
     const pt = toPlan(e);
-    setCursor(tool === 'wall' || tool === 'room' ? snap(pt, true) : pt);
+    setCursor(tool === 'wall' || tool === 'room' ? snap(pt, true) : tool === 'areaRect' ? snapAreaPoint(m, pt, grid) : pt);
     const d = drag.current;
     if (!d) return;
     const base = d.base;
@@ -382,6 +415,21 @@ export function Canvas(p: Props) {
         p.onPreview(setSpawn(base, { x: s.x, y: s.y }));
         break;
       }
+      case 'area': {
+        const a = findArea(base, d.id);
+        if (!a) return;
+        const s = snapPoint(pt, grid);
+        d.moved = true;
+        p.onPreview(moveArea(base, d.id, snapAreaMove(base, a.rect, { x: s.x - d.start.x, y: s.y - d.start.y })));
+        break;
+      }
+      case 'areaHandle': {
+        const a = findArea(base, d.id);
+        if (!a) return;
+        d.moved = true;
+        p.onPreview(updateArea(base, d.id, { rect: resizeAreaRect(a.rect, d.handle, snapAreaPoint(base, pt, grid), MIN_AREA_SIZE) }));
+        break;
+      }
       case 'spawnTool': {
         const dx = pt.x - d.start.x, dy = pt.y - d.start.y;
         if (Math.hypot(dx, dy) > 0.15) {
@@ -407,6 +455,12 @@ export function Canvas(p: Props) {
         if (r) {
           p.onChange(r.museum);
           p.onSelect({ type: 'wall', id: r.ids[0] });
+        }
+      } else if (draft.kind === 'areaRect') {
+        const r = addArea(m, rectFromDrag(draft.start, snapAreaPoint(m, pt, grid)));
+        if (r) {
+          p.onChange(r.museum);
+          p.onSelect({ type: 'area', id: r.id });
         }
       } else if (p.audioMediaId) {
         const s = snapPoint(pt, grid);
@@ -481,22 +535,35 @@ export function Canvas(p: Props) {
   };
 
   const draftShape: ZoneShape | null = (() => {
-    if (!draft || !cursor) return null;
+    if (!draft || !cursor || draft.kind === 'areaRect') return null;
     const s = draft.kind === 'room' ? cursor : snapPoint(cursor, grid);
     if (draft.kind === 'zoneCircle') return { kind: 'circle', cx: draft.start.x, cy: draft.start.y, r: Math.hypot(s.x - draft.start.x, s.y - draft.start.y) };
     return { kind: 'rect', x: Math.min(draft.start.x, s.x), y: Math.min(draft.start.y, s.y), w: Math.abs(s.x - draft.start.x), h: Math.abs(s.y - draft.start.y) };
   })();
 
+  const areaDraft = draft?.kind === 'areaRect' && cursor ? rectFromDrag(draft.start, cursor) : null;
   const readout = (() => {
     if (tool === 'wall' && chain && cursor) {
       const len = Math.hypot(cursor.x - chain.x, cursor.y - chain.y);
       const ang = ((Math.atan2(cursor.y - chain.y, cursor.x - chain.x) * 180) / Math.PI + 360) % 360;
       return `${len.toFixed(2)} m  ${Math.round(ang)}°`;
     }
+    if (areaDraft) return `${areaDraft.w.toFixed(2)} × ${areaDraft.h.toFixed(2)} m`;
     if (draftShape?.kind === 'rect') return `${draftShape.w.toFixed(2)} × ${draftShape.h.toFixed(2)} m`;
     if (draftShape?.kind === 'circle') return `r ${draftShape.r.toFixed(2)} m`;
     return null;
   })();
+
+  const fillPreview = layer === 'areas' && tool === 'areaFill' && cursor ? fillRoom(m, cursor) : null;
+  const selArea = selection?.type === 'area' ? findArea(m, selection.id) : undefined;
+  const patterns = new Map<string, { id: string; href: string; tile: number }>();
+  const areaFace = (a: (typeof m.areas)[number]) => a.floor ?? a.ceiling!;
+  for (const a of m.areas) {
+    const f = areaFace(a);
+    const media = f.textureId ? m.media.find((x) => x.id === f.textureId && x.kind === 'texture') : undefined;
+    if (media) patterns.set(`${f.textureId}|${f.tileSize}`, { id: `ap-${patterns.size}`, href: `./museum/${media.file}`, tile: f.tileSize });
+  }
+  const dim = layer === 'areas' ? 'layer-dim' : '';
 
   const spawn = m.settings.spawn;
   const yaw = (spawn.yawDeg * Math.PI) / 180;
@@ -521,6 +588,42 @@ export function Canvas(p: Props) {
         <line className="origin" x1={-0.3} x2={0.3} y1={0} y2={0} />
         <line className="origin" x1={0} x2={0} y1={-0.3} y2={0.3} />
 
+        <defs>
+          {[...patterns.values()].map((pt) => (
+            <pattern key={pt.id} id={pt.id} x={0} y={0} width={pt.tile} height={pt.tile} patternUnits="userSpaceOnUse">
+              <image href={pt.href} x={0} y={0} width={pt.tile} height={pt.tile} preserveAspectRatio="none" />
+            </pattern>
+          ))}
+        </defs>
+
+        <g className={layer === 'areas' ? 'areas-layer' : 'areas-layer faint'}>
+          {m.areas.map((a) => {
+            const f = areaFace(a);
+            const pat = f.textureId ? patterns.get(`${f.textureId}|${f.tileSize}`) : undefined;
+            const sel = selection?.type === 'area' && selection.id === a.id;
+            const r = a.rect;
+            const tag = a.floor && a.ceiling ? 'F+C' : a.floor ? 'F' : 'C';
+            return (
+              <g key={a.id} className={'area' + (sel ? ' selected' : '') + (a.floor ? '' : ' ceiling-only')}>
+                <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={f.color} fillOpacity={0.55} />
+                {pat && <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={`url(#${pat.id})`} fillOpacity={0.6} />}
+                <rect className="area-outline" x={r.x} y={r.y} width={r.w} height={r.h} />
+                {layer === 'areas' && (
+                  <text className="area-label" x={r.x + r.w / 2} y={r.y + r.h / 2} fontSize={fs} textAnchor="middle" dominantBaseline="middle">
+                    {a.name || a.id} · {tag}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+          {selArea && layer === 'areas' && areaHandles(selArea.rect).map((h) => (
+            <rect key={h.handle} className="handle" x={h.p.x - 5 * px} y={h.p.y - 5 * px} width={10 * px} height={10 * px} />
+          ))}
+          {areaDraft && <rect className="area-outline draft" x={areaDraft.x} y={areaDraft.y} width={areaDraft.w} height={areaDraft.h} />}
+          {fillPreview && <rect className="area-outline draft" x={fillPreview.x} y={fillPreview.y} width={fillPreview.w} height={fillPreview.h} />}
+        </g>
+
+        <g className={dim}>
         {m.zones.map((z) => {
           const inner = selection?.type === 'zone' && selection.id === z.id ? insetShape(z.shape, z.fade) : null;
           const c = z.shape.kind === 'rect' ? { x: z.shape.x + z.shape.w / 2, y: z.shape.y + z.shape.h / 2 } : { x: z.shape.cx, y: z.shape.cy };
@@ -584,6 +687,8 @@ export function Canvas(p: Props) {
           <polygon points={`${spawn.x + sdx * 0.95},${spawn.y + sdy * 0.95} ${spawn.x + sdx * 0.6 - sdy * 0.18},${spawn.y + sdy * 0.6 + sdx * 0.18} ${spawn.x + sdx * 0.6 + sdy * 0.18},${spawn.y + sdy * 0.6 - sdx * 0.18}`} />
         </g>
 
+        </g>
+
         {/* in-progress drawing */}
         {tool === 'wall' && cursor && (
           <g className="draft">
@@ -612,6 +717,7 @@ export function Canvas(p: Props) {
       {readout && cursor && (
         <div className="readout" style={{ left: cursorPx.x + 16, top: cursorPx.y + 16 }}>{readout}</div>
       )}
+      <div className={'layer-badge ' + layer}>{layer === 'areas' ? 'Areas layer: walls and works are locked' : 'Build layer'}</div>
       <div className="scalebar">
         <div className="scalebar-line" style={{ width: scaleBar.px }} />
         <span>{scaleBar.len} m</span>

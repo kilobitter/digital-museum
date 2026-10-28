@@ -1,6 +1,7 @@
 // Pure editor operations on an immutable Museum. No React, no DOM.
 import type { AudioZone, MediaItem, Museum, MuseumSettings, Vec2, Wall, WallFinish, WallSide, Work, ZoneShape } from '../shared/museum';
 import { closestPointOnSegment, wallLength, wallNormal } from '../shared/geometry';
+import { textureUsage } from '../shared/finishes';
 
 export const EPS = 1e-4;
 
@@ -303,13 +304,12 @@ export function setSpawn(m: Museum, patch: Partial<MuseumSettings['spawn']>): Mu
   return { ...m, settings: { ...m.settings, spawn: { ...m.settings.spawn, ...patch } } };
 }
 
-/** Works + zones + wall finishes (settings default and per-wall) that reference this media item. */
+/** Works + zones + finishes (walls, floor, ceiling, areas) that reference this media item. */
 export function mediaUsage(m: Museum, mediaId: string): number {
   return (
     m.works.filter((w) => w.mediaId === mediaId).length +
     m.zones.filter((z) => z.mediaId === mediaId).length +
-    m.walls.filter((w) => w.finish?.textureId === mediaId).length +
-    (m.settings.wallFinish.textureId === mediaId ? 1 : 0)
+    textureUsage(m, mediaId)
   );
 }
 
@@ -367,7 +367,7 @@ export function removeMedia(m: Museum, mediaId: string): Museum | null {
 export interface EditorWarning {
   kind: 'past-wall-end' | 'overlap' | 'above-wall' | 'below-floor' | 'zone-no-audio' | 'spawn-in-wall' | 'texture-missing';
   message: string;
-  target: { type: 'work' | 'zone' | 'spawn' | 'wall' | 'settings'; id: string };
+  target: { type: 'work' | 'zone' | 'spawn' | 'wall' | 'settings' | 'area'; id: string };
 }
 
 export function computeWarnings(m: Museum): EditorWarning[] {
@@ -410,6 +410,13 @@ export function computeWarnings(m: Museum): EditorWarning[] {
   const dflt = m.settings.wallFinish.textureId;
   if (dflt !== undefined && !isTexture(dflt))
     out.push({ kind: 'texture-missing', message: 'The default wall texture is missing', target: { type: 'settings', id: 'settings' } });
+  for (const [what, f] of [['floor', m.settings.floorFinish], ['ceiling', m.settings.ceilingFinish]] as const)
+    if (f.textureId !== undefined && !isTexture(f.textureId))
+      out.push({ kind: 'texture-missing', message: `The default ${what} texture is missing`, target: { type: 'settings', id: 'settings' } });
+  for (const a of m.areas)
+    for (const [what, f] of [['floor', a.floor], ['ceiling', a.ceiling]] as const)
+      if (f?.textureId !== undefined && !isTexture(f.textureId))
+        out.push({ kind: 'texture-missing', message: `Area "${a.name || a.id}": ${what} texture is missing`, target: { type: 'area', id: a.id } });
   for (const wall of m.walls) {
     const t = wall.finish?.textureId;
     if (t !== undefined && !isTexture(t))

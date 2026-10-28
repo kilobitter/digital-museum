@@ -1,4 +1,4 @@
-// Generates a sample museum (format v2) into the given folder (no dependencies).
+// Generates a sample museum (format v3) into the given folder (no dependencies).
 // Usage: node scripts/make-sample.mjs <outDir> [--force]
 // Refuses to write into public/museum when it already holds a museum.json, unless --force is given.
 import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -100,6 +100,16 @@ writeFileSync(join(root, 'media', 'plaster.png'), png(TEX, TEX, (u, v, x, y) => 
   return [k, k - 2, k - 6];
 }));
 
+// ---- floor boards texture: planks with grain, tiles seamlessly (plank boundaries land on the tile edge) ----
+writeFileSync(join(root, 'media', 'boards.png'), png(TEX, TEX, (u, v, x, y) => {
+  const plank = Math.floor(y / 32); // 8 planks per tile
+  const shade = 0.8 + 0.2 * hash(plank, 7);
+  const grain = 0.9 + 0.1 * noise(x / TEX, y / TEX, 4) + 0.04 * hash(x >> 2, y);
+  const seam = y % 32 === 0 ? 0.7 : 1;
+  const k = shade * grain * seam;
+  return [Math.round(176 * k), Math.round(128 * k), Math.round(84 * k)].map((c) => Math.min(255, c));
+}));
+
 // ---- WAV generator (integer cycles over the duration => seamless loop) ----
 function wav(freqs, seconds = 4, rate = 22050) {
   const n = rate * seconds;
@@ -135,6 +145,7 @@ const media = [
     return { id: im.id, kind: 'image', file: `media/${im.file}.png`, name: im.name, width: im.w, height: im.h, title: l[0], artist: l[1], ...(l[2] ? { description: l[2] } : {}) };
   }),
   { id: 'tex1', kind: 'texture', file: 'media/plaster.png', name: 'Plaster.png', width: TEX, height: TEX },
+  { id: 'tex2', kind: 'texture', file: 'media/boards.png', name: 'Boards.png', width: TEX, height: TEX },
   { id: 'aud1', kind: 'audio', file: 'media/hum.wav', name: 'Hum.wav' },
   { id: 'aud2', kind: 'audio', file: 'media/chime.wav', name: 'Chime.wav' },
 ];
@@ -151,11 +162,19 @@ const walls = [
   { id: 'wB-bottom', a: { x: 16, y: 6 }, b: { x: 8, y: 6 } },
   { id: 'wB-right', a: { x: 16, y: 0 }, b: { x: 16, y: 6 } }, // perp = -x (into the room)
 ];
+// Floors: room A uses the plaster-free default; room B gets a floor area with a generated wood-like texture,
+// and a small rug (plain colour) sits on top of it. Room A also gets a tinted ceiling area.
+const floorFinishWood = { textureId: 'tex2', color: '#ffffff', tileSize: 1 };
+const areas = [
+  { id: 'ar-floor-b', name: 'Room B floor', rect: { x: 8, y: 0, w: 8, h: 6 }, floor: floorFinishWood },
+  { id: 'ar-rug', name: 'Rug', rect: { x: 11, y: 2, w: 2, h: 2 }, floor: { color: '#8c3b3b', tileSize: 1 } },
+  { id: 'ar-ceiling-a', name: 'Room A ceiling', rect: { x: 0, y: 0, w: 8, h: 6 }, ceiling: { color: '#e8eef6', tileSize: 1 } },
+];
 const work = (id, mediaId, wallId, side, t, width) => ({ id, mediaId, wallId, side, t, centerHeight: 1.5, width });
 const museum = {
-  version: 2,
+  version: 3,
   name: 'Sample Museum',
-  settings: { wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, wallFinish: { color: '#ffffff', tileSize: 1 }, spawn: { x: 4, y: 5, yawDeg: 0 } },
+  settings: { wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, wallFinish: { color: '#ffffff', tileSize: 1 }, floorFinish: { color: '#e6e3dd', tileSize: 1 }, ceilingFinish: { color: '#ffffff', tileSize: 1 }, spawn: { x: 4, y: 5, yawDeg: 0 } },
   walls,
   works: [
     work('wk1', 'img1', 'wA-top', 1, 4, 2.4),
@@ -169,7 +188,8 @@ const museum = {
     { id: 'z1', name: 'Hum (room A)', mediaId: 'aud1', shape: { kind: 'rect', x: 1.5, y: 1.5, w: 4, h: 3 }, volume: 0.8, fade: 1 },
     { id: 'z2', name: 'Chime (doorway and room B)', mediaId: 'aud2', shape: { kind: 'circle', cx: 11, cy: 3, r: 3.5 }, volume: 0.6, fade: 1.5 },
   ],
+  areas,
   media,
 };
 writeFileSync(join(root, 'museum.json'), JSON.stringify(museum, null, 2) + '\n');
-console.log('Sample museum (v2) written to', root);
+console.log('Sample museum (v3) written to', root);

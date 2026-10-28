@@ -69,3 +69,27 @@ export function hitTest(m: Museum, p: Vec2, tol: number, selectedZoneId: string 
   for (let i = m.zones.length - 1; i >= 0; i--) if (distanceInside(m.zones[i].shape, p) > 0) return { type: 'zone', id: m.zones[i].id };
   return null;
 }
+
+export type AreaHit =
+  | { type: 'areaHandle'; id: string; handle: RectHandle }
+  | { type: 'area'; id: string };
+
+export function areaHandles(rect: { x: number; y: number; w: number; h: number }): { handle: RectHandle; p: Vec2 }[] {
+  return [
+    { handle: 'nw', p: { x: rect.x, y: rect.y } },
+    { handle: 'ne', p: { x: rect.x + rect.w, y: rect.y } },
+    { handle: 'se', p: { x: rect.x + rect.w, y: rect.y + rect.h } },
+    { handle: 'sw', p: { x: rect.x, y: rect.y + rect.h } },
+  ];
+}
+
+/** Areas layer: handles of the selected area first, then the top-most area under the point. Nothing else is hit. */
+export function hitTestAreas(m: Museum, p: Vec2, tol: number, selectedAreaId: string | null): AreaHit | null {
+  const sel = selectedAreaId ? m.areas.find((a) => a.id === selectedAreaId) : undefined;
+  if (sel) for (const h of areaHandles(sel.rect)) if (Math.hypot(p.x - h.p.x, p.y - h.p.y) <= tol * 1.3) return { type: 'areaHandle', id: sel.id, handle: h.handle };
+  for (let i = m.areas.length - 1; i >= 0; i--) {
+    const r = m.areas[i].rect;
+    if (p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) return { type: 'area', id: m.areas[i].id };
+  }
+  return null;
+}

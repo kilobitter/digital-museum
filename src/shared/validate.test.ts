@@ -4,12 +4,13 @@ import sample from '../../public/museum/museum.json';
 
 type Any = Record<string, any>;
 const base = (): Any => ({
-  version: 2,
+  version: 3,
   name: 'T',
-  settings: { wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, wallFinish: { color: '#ffffff', tileSize: 1 }, spawn: { x: 0, y: 0, yawDeg: 0 } },
+  settings: { wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, wallFinish: { color: '#ffffff', tileSize: 1 }, floorFinish: { color: '#e6e3dd', tileSize: 1 }, ceilingFinish: { color: '#ffffff', tileSize: 1 }, spawn: { x: 0, y: 0, yawDeg: 0 } },
   walls: [{ id: 'w1', a: { x: 0, y: 0 }, b: { x: 4, y: 0 } }],
   works: [{ id: 'k1', mediaId: 'i1', wallId: 'w1', side: 1, t: 1, centerHeight: 1.5, width: 1 }],
   zones: [{ id: 'z1', name: 'z', mediaId: 'a1', shape: { kind: 'rect', x: 0, y: 0, w: 2, h: 2 }, volume: 0.5, fade: 1 }],
+  areas: [],
   media: [
     { id: 'i1', kind: 'image', file: 'media/a.jpg', name: 'a.jpg', width: 100, height: 50, title: 'a', artist: 'b' },
     { id: 't1', kind: 'texture', file: 'media/t.png', name: 't.png', width: 64, height: 64 },
@@ -28,8 +29,9 @@ const expectError = (m: unknown, fragment: string) => {
 describe('defaultMuseum', () => {
   it('is valid and empty', () => {
     const d = defaultMuseum();
-    expect(d.version).toBe(2);
-    expect(d.settings).toEqual({ wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, wallFinish: { color: '#ffffff', tileSize: 1 }, spawn: { x: 0, y: 0, yawDeg: 0 } });
+    expect(d.version).toBe(3);
+    expect(d.areas).toEqual([]);
+    expect(d.settings).toEqual({ wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, wallFinish: { color: '#ffffff', tileSize: 1 }, floorFinish: { color: '#e6e3dd', tileSize: 1 }, ceilingFinish: { color: '#ffffff', tileSize: 1 }, spawn: { x: 0, y: 0, yawDeg: 0 } });
     expect(parseMuseum(d).ok).toBe(true);
   });
 });
@@ -49,7 +51,7 @@ describe('parseMuseum', () => {
     expect(parseMuseum(v).ok).toBe(false);
   });
   it('rejects wrong version', () => {
-    for (const v of [0, 3, '2', undefined]) {
+    for (const v of [0, 4, '3', undefined]) {
       const m = base(); m.version = v;
       expectError(m, 'version');
     }
@@ -153,7 +155,7 @@ describe('format v2', () => {
     const r = parseMuseum(m);
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.museum.version).toBe(2);
+      expect(r.museum.version).toBe(3);
       expect(r.museum.settings.wallFinish.textureId).toBe('t1');
       expect(r.museum.media[0].title).toBe('a');
       expect(r.museum.walls[0].finish).toEqual({ color: '#FF00ff', tileSize: 2 });
@@ -213,14 +215,17 @@ describe('v1 migration', () => {
     m.works = [{ id: 'k1', mediaId: 'i1', wallId: 'w1', side: 1, t: 1, centerHeight: 1.5, width: 1, title: 'First', artist: 'A' }];
     return m;
   };
-  it('moves labels to media, adds default finish, sets version 2', () => {
+  it('moves labels to media, adds default finish, sets version 3 (v1 -> v3)', () => {
     const m = v1();
     m.works[0].description = 'desc';
     const r = parseMuseum(m);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.museum.version).toBe(2);
+    expect(r.museum.version).toBe(3);
     expect(r.museum.settings.wallFinish).toEqual({ color: '#ffffff', tileSize: 1 });
+    expect(r.museum.settings.floorFinish).toEqual({ color: '#e6e3dd', tileSize: 1 });
+    expect(r.museum.settings.ceilingFinish).toEqual({ color: '#ffffff', tileSize: 1 });
+    expect(r.museum.areas).toEqual([]);
     const img = r.museum.media.find((x) => x.id === 'i1')!;
     expect(img).toMatchObject({ title: 'First', artist: 'A', description: 'desc' });
     expect(r.museum.works[0]).not.toHaveProperty('title');
@@ -260,7 +265,77 @@ describe('v1 migration', () => {
     const copy = JSON.parse(JSON.stringify(sample));
     const r = parseMuseum(copy);
     expect(r.ok ? [] : r.errors).toEqual([]);
-    expect(r.ok && r.museum.version).toBe(2);
+    expect(r.ok && r.museum.version).toBe(3);
     expect(JSON.stringify(copy)).toBe(JSON.stringify(sample)); // input not mutated
+  });
+});
+
+describe('format v3', () => {
+  const area = (): Any => ({ id: 'a1', name: 'Rug', rect: { x: 0, y: 0, w: 2, h: 3 }, floor: { textureId: 't1', color: '#ffffff', tileSize: 0.5 }, ceiling: { color: '#aabbcc', tileSize: 1 } });
+  it('accepts floor/ceiling finishes and areas', () => {
+    const m = base();
+    m.settings.floorFinish = { textureId: 't1', color: '#112233', tileSize: 2 };
+    m.areas = [area(), { id: 'a2', name: '', rect: { x: -1, y: -1, w: 1, h: 1 }, ceiling: { color: '#000000', tileSize: 1 } }];
+    const r = parseMuseum(m);
+    expect(r.ok ? [] : r.errors).toEqual([]);
+    if (r.ok) {
+      expect(r.museum.areas.map((a) => a.id)).toEqual(['a1', 'a2']);
+      expect(r.museum.areas[1].floor).toBeUndefined();
+      expect(r.museum.settings.floorFinish.textureId).toBe('t1');
+    }
+  });
+  it('requires the settings finishes and the areas array', () => {
+    let m = base(); delete m.settings.floorFinish;
+    expectError(m, 'settings.floorFinish');
+    m = base(); delete m.settings.ceilingFinish;
+    expectError(m, 'settings.ceilingFinish');
+    m = base(); delete m.areas;
+    expectError(m, 'areas: expected an array');
+  });
+  it('validates settings floor/ceiling finishes like wall finishes', () => {
+    let m = base(); m.settings.floorFinish.color = 'red';
+    expectError(m, 'settings.floorFinish.color');
+    m = base(); m.settings.ceilingFinish.tileSize = 0;
+    expectError(m, 'settings.ceilingFinish.tileSize');
+    m = base(); m.settings.floorFinish.textureId = 'i1';
+    expectError(m, 'settings.floorFinish.textureId: media');
+    m = base(); m.settings.ceilingFinish.textureId = 'nope';
+    expectError(m, "settings.ceilingFinish.textureId: no media with id 'nope'");
+  });
+  it('rejects duplicate area ids, bad rects, missing finishes and bad area textures', () => {
+    let m = base(); m.areas = [area(), area()];
+    expectError(m, "areas[1].id: duplicate id 'a1'");
+    m = base(); m.areas = [area()]; m.areas[0].rect.w = 0;
+    expectError(m, 'areas[0].rect.w');
+    m = base(); m.areas = [area()]; m.areas[0].rect.h = -1;
+    expectError(m, 'areas[0].rect.h');
+    m = base(); m.areas = [area()]; m.areas[0].rect.x = NaN;
+    expectError(m, 'areas[0].rect.x');
+    m = base(); m.areas = [area()]; delete m.areas[0].rect;
+    expectError(m, 'areas[0].rect');
+    m = base(); m.areas = [area()]; delete m.areas[0].floor; delete m.areas[0].ceiling;
+    expectError(m, 'areas[0]: needs');
+    m = base(); m.areas = [area()]; m.areas[0].floor.tileSize = 0;
+    expectError(m, 'areas[0].floor.tileSize');
+    m = base(); m.areas = [area()]; m.areas[0].ceiling.color = 'x';
+    expectError(m, 'areas[0].ceiling.color');
+    m = base(); m.areas = [area()]; m.areas[0].floor.textureId = 'nope';
+    expectError(m, "areas[0].floor.textureId: no media with id 'nope'");
+    m = base(); m.areas = [area()]; m.areas[0].ceiling.textureId = 'a1';
+    expectError(m, 'areas[0].ceiling.textureId: media');
+    m = base(); m.areas = [area()]; m.areas[0].name = 5;
+    expectError(m, 'areas[0].name');
+  });
+  it('migrates v2 to v3 with default finishes and no areas', () => {
+    const m = base();
+    m.version = 2;
+    delete m.settings.floorFinish; delete m.settings.ceilingFinish; delete m.areas;
+    const r = parseMuseum(m);
+    expect(r.ok ? [] : r.errors).toEqual([]);
+    if (!r.ok) return;
+    expect(r.museum.version).toBe(3);
+    expect(r.museum.settings.floorFinish).toEqual({ color: '#e6e3dd', tileSize: 1 });
+    expect(r.museum.settings.ceilingFinish).toEqual({ color: '#ffffff', tileSize: 1 });
+    expect(r.museum.areas).toEqual([]);
   });
 });

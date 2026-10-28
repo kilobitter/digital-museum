@@ -1,5 +1,5 @@
-// Generates a large v2 museum for stress-testing the viewer: a 10 x 9 grid of rooms (90), 500 works,
-// 90 audio zones, with tiny generated media files (every painting is its own file, as in real use).
+// Generates a large v3 museum for stress-testing the viewer: a 10 x 9 grid of rooms (90), 500 works,
+// 90 audio zones, 30 floor/ceiling areas (3 floor colours, 2 ceiling colours, some stacked), with tiny generated media files (every painting is its own file, as in real use).
 // Usage: node scripts/make-stress.mjs <outDir> [--force]
 // Refuses to write into public/museum (your real museum).
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -83,11 +83,24 @@ for (let i = 0; i < WORKS; i++) {
   media.push({ id: `p${i}`, kind: 'image', file, name: `Painting ${i}.png`, width: w, height: h, title: `Painting ${i}`, artist: `Artist ${i % 40}` });
   works.push({ id: `work${i}`, mediaId: `p${i}`, wallId: `w${room}-${k % 4}`, side: 1, t: k < 4 ? 3 : 7, centerHeight: 1.5, width: 1.2 });
 }
+// 30 areas: 20 room-sized ones (some with a ceiling too) and 10 rugs stacked on top of them.
+const floors = ['#c8b89a', '#a9b8c4', '#b9c9a8'].map((color) => ({ color, tileSize: 1 }));
+const ceilings = ['#f3efe6', '#dfe8f2'].map((color) => ({ color, tileSize: 1 }));
+const areas = [];
+for (let j = 0; j < 30; j++) {
+  const room = j % 20, c = room % COLS, r = Math.floor(room / COLS);
+  const x0 = c * PITCH, y0 = r * PITCH;
+  if (j < 20) {
+    areas.push({ id: `area${j}`, name: `Room ${j}`, rect: { x: x0, y: y0, w: SIZE, h: SIZE }, floor: floors[j % 3], ...(j % 4 === 0 ? { ceiling: ceilings[(j / 4) % 2] } : {}) });
+  } else {
+    areas.push({ id: `area${j}`, name: `Rug ${j}`, rect: { x: x0 + 3, y: y0 + 3, w: 4, h: 4 }, floor: floors[(j + 1) % 3] });
+  }
+}
 const museum = {
-  version: 2,
+  version: 3,
   name: 'Stress museum',
-  settings: { wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, wallFinish: { color: '#ffffff', tileSize: 1 }, spawn: { x: SIZE / 2, y: SIZE / 2, yawDeg: 0 } },
-  walls, works, zones, media,
+  settings: { wallHeight: 3, wallThickness: 0.2, gridSize: 0.5, ceiling: true, wallFinish: { color: '#ffffff', tileSize: 1 }, floorFinish: { color: '#e6e3dd', tileSize: 1 }, ceilingFinish: { color: '#ffffff', tileSize: 1 }, spawn: { x: SIZE / 2, y: SIZE / 2, yawDeg: 0 } },
+  walls, works, zones, areas, media,
 };
 writeFileSync(join(root, 'museum.json'), JSON.stringify(museum, null, 1));
-console.log(`Wrote ${walls.length} walls, ${works.length} works, ${zones.length} zones, ${media.length} media to ${root}`);
+console.log(`Wrote ${walls.length} walls, ${works.length} works, ${zones.length} zones, ${areas.length} areas, ${media.length} media to ${root}`);

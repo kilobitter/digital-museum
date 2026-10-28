@@ -7,6 +7,7 @@ import {
   updateZone,
 } from './model';
 import { Field, NumField } from './fields';
+import { deleteArea, duplicateArea, findArea, reorderArea, setAreaRect, updateArea, type Reorder } from './areaModel';
 import type { Selection } from './types';
 
 interface Props {
@@ -234,6 +235,68 @@ export function Inspector({ museum: m, selection, selectedMediaId, onChange, onD
     );
   }
 
+  if (selection?.type === 'area') {
+    const a = findArea(m, selection.id);
+    if (!a) return null;
+    const k = (f: string) => `${a.id}.${f}`;
+    const idx = m.areas.findIndex((x) => x.id === a.id);
+    const last = m.areas.length - 1;
+    const order = (how: Reorder) => onChange(reorderArea(m, a.id, how));
+    const surface = (which: 'floor' | 'ceiling', label: string, dflt: WallFinish) => {
+      const f = a[which];
+      const other = which === 'floor' ? a.ceiling : a.floor;
+      return (
+        <div className="finish">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={f !== undefined}
+              disabled={f !== undefined && other === undefined}
+              title={f !== undefined && other === undefined ? 'An area needs a floor or a ceiling finish' : ''}
+              onChange={(e) => onChange(updateArea(m, a.id, { [which]: e.target.checked ? { ...dflt } : undefined }))}
+            />
+            {label}
+          </label>
+          {f && <FinishFields finish={f} museum={m} keyPrefix={k(which)} onChange={(nf, key) => onChange(updateArea(m, a.id, { [which]: nf }), key)} />}
+        </div>
+      );
+    };
+    return (
+      <section className="panel">
+        <h3>Area <span className="muted">layer {idx + 1} of {m.areas.length}</span></h3>
+        <Field label="Name"><input type="text" value={a.name} onChange={(e) => onChange(updateArea(m, a.id, { name: e.target.value }), k('name'))} /></Field>
+        <div className="grid2">
+          <Field label="x"><NumField value={a.rect.x} onChange={(v) => onChange(setAreaRect(m, a.id, { x: v }), k('x'))} unit="m" /></Field>
+          <Field label="y"><NumField value={a.rect.y} onChange={(v) => onChange(setAreaRect(m, a.id, { y: v }), k('y'))} unit="m" /></Field>
+          <Field label="Width"><NumField value={a.rect.w} min={0} exclusiveMin onChange={(v) => onChange(setAreaRect(m, a.id, { w: v }), k('w'))} unit="m" /></Field>
+          <Field label="Height"><NumField value={a.rect.h} min={0} exclusiveMin onChange={(v) => onChange(setAreaRect(m, a.id, { h: v }), k('h'))} unit="m" /></Field>
+        </div>
+        {surface('floor', 'Floor', m.settings.floorFinish)}
+        {surface('ceiling', 'Ceiling', m.settings.ceilingFinish)}
+        {!m.settings.ceiling && a.ceiling && <p className="hint">The museum has no ceiling (see settings), so ceiling areas are not shown.</p>}
+        <div className="row stack-buttons">
+          <button disabled={idx >= last} onClick={() => order('forward')} title="One step up the stack">Bring forward</button>
+          <button disabled={idx <= 0} onClick={() => order('backward')} title="One step down the stack">Send backward</button>
+          <button disabled={idx >= last} onClick={() => order('front')}>To front</button>
+          <button disabled={idx <= 0} onClick={() => order('back')}>To back</button>
+        </div>
+        <p className="hint">Later areas are drawn on top of earlier ones.</p>
+        <div className="row">
+          <button
+            onClick={() => {
+              const r = duplicateArea(m, a.id);
+              if (r) onChange(r.museum);
+            }}
+            title="Ctrl/Cmd+D"
+          >
+            Duplicate
+          </button>
+          {del((x) => deleteArea(x, a.id))}
+        </div>
+      </section>
+    );
+  }
+
   const media = selectedMediaId ? findMedia(m, selectedMediaId) : undefined;
   if (media?.kind === 'image') {
     const n = hungCount(m, media.id);
@@ -269,6 +332,11 @@ export function SettingsPanel({ museum: m, onChange }: { museum: Museum; onChang
       </div>
       <h3 className="subhead">Default wall finish</h3>
       <FinishFields finish={s.wallFinish} museum={m} keyPrefix="s.finish" onChange={(f, key) => onChange(updateSettings(m, { wallFinish: f }), key)} />
+      <h3 className="subhead">Default floor finish</h3>
+      <FinishFields finish={s.floorFinish} museum={m} keyPrefix="s.floor" onChange={(f, key) => onChange(updateSettings(m, { floorFinish: f }), key)} />
+      <h3 className="subhead">Default ceiling finish</h3>
+      <FinishFields finish={s.ceilingFinish} museum={m} keyPrefix="s.ceil" onChange={(f, key) => onChange(updateSettings(m, { ceilingFinish: f }), key)} />
+      {!s.ceiling && <p className="hint">The ceiling is switched off, so its finish is not shown.</p>}
       <p className="hint">Facing 0° looks up the blueprint, 90° to the right.</p>
     </details>
   );

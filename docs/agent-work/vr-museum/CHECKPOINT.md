@@ -2,12 +2,14 @@
 
 Goal and scope: minimalist WebXR museum (Quest) + desktop blueprint editor; see SPEC.md.
 Spec / plan: docs/agent-work/vr-museum/SPEC.md, briefs/T1.md, briefs/T2.md, briefs/T3.md, briefs/T4.md (ready, dispatch after T3 accepted)
-Workspace and baseline: /Users/ghijs/development/Digital museum, T1 0b933bc, T2 d127856, T3 66d7ec7, T4 d788ba9, T5 library tabs (next commit)
+Workspace and baseline: /Users/ghijs/development/Digital museum, T1 0b933bc, T2 d127856, T3 66d7ec7, T4 d788ba9, T5 f09c9fb, T6 a5eb929, T7 (next commit)
 Routing: root Opus; builder Sonnet (user confirmed via /tasks, 2026-10-27)
 
 ## Accepted work and fixed contracts
 - src/shared/museum.ts (data contract, orchestrator-owned)
 - T1 accepted (1 correction) and committed 0b933bc: viewer, shared logic (validate/geometry/zones), sample museum. Not yet seen in a headset.
+- T7 accepted (1 correction): museum.ts v3 (floor/ceiling finishes, rectangular areas, v1/v2 migration), Areas editor layer with Fill room + stacking, world-aligned floor/ceiling textures, overlap-based stack levels.
+- T6 resizable library grid; T5 library tabs; dca3523 dev plugin serves public/museum from disk (new uploads were 404ing).
 - T4 accepted (1 correction): streaming viewer (paintings 15/20 m cap 70, audio 10/15 m cap 8), merged static meshes, ?debug overlay, bulk upload queue, filename parsing, library search/filter, fill wall, stress generator.
 - T3 accepted (0 corrections), committed 66d7ec7: museum.ts v2 (labels on MediaItem, WallFinish, texture kind) + migration, wall textures, random hang, port 5317, README, Pages workflow.
 - T2 accepted (1 correction) and committed d127856: editor.html (React+SVG), src/devserver/museumApi.ts dev API with loopback/header/Host/Origin guards.

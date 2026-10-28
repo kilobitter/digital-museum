@@ -1,5 +1,6 @@
 import {
   MUSEUM_VERSION,
+  type Area,
   type AudioZone,
   type MediaItem,
   type Museum,
@@ -19,11 +20,14 @@ export function defaultMuseum(): Museum {
       gridSize: 0.5,
       ceiling: true,
       wallFinish: { color: '#ffffff', tileSize: 1 },
+      floorFinish: { color: '#e6e3dd', tileSize: 1 },
+      ceilingFinish: { color: '#ffffff', tileSize: 1 },
       spawn: { x: 0, y: 0, yawDeg: 0 },
     },
     walls: [],
     works: [],
     zones: [],
+    areas: [],
     media: [],
   };
 }
@@ -81,7 +85,9 @@ export function parseMuseum(
 
   // v1 files are validated with the v1 rules and then migrated (see the end of this function).
   const legacy = json.version === 1;
-  if (json.version !== MUSEUM_VERSION && !legacy) err('version', `expected ${MUSEUM_VERSION} (got ${JSON.stringify(json.version)})`);
+  // v1 and v2 files are migrated to v3 (floor/ceiling finishes default, no areas).
+  const preV3 = legacy || json.version === 2;
+  if (json.version !== MUSEUM_VERSION && !preV3) err('version', `expected ${MUSEUM_VERSION} (got ${JSON.stringify(json.version)})`);
   const name = typeof json.name === 'string' ? json.name : (err('name', 'expected a string'), '');
 
   /** Collected after media is parsed; needs the media ids, so it is validated lazily. */
@@ -116,6 +122,8 @@ export function parseMuseum(
       gridSize: num(s, 'gridSize', 'settings', { positive: true }),
       ceiling: s.ceiling === true,
       wallFinish: legacy ? { ...def.wallFinish } : finish(s.wallFinish, 'settings.wallFinish'),
+      floorFinish: preV3 ? { ...def.floorFinish } : finish(s.floorFinish, 'settings.floorFinish'),
+      ceilingFinish: preV3 ? { ...def.ceilingFinish } : finish(s.ceilingFinish, 'settings.ceilingFinish'),
       spawn: {
         x: num(sp, 'x', 'settings.spawn'),
         y: num(sp, 'y', 'settings.spawn'),
@@ -180,7 +188,7 @@ export function parseMuseum(
   uniq(media, 'media');
   const mediaById = new Map(media.map((m) => [m.id, m]));
   const wallIds = new Set(walls.map((w) => w.id));
-  for (const { f, path } of finishes) {
+  for (const { f, path } of finishes.splice(0)) {
     const m = mediaById.get(f.textureId!);
     if (!m) err(`${path}.textureId`, `no media with id '${f.textureId}'`);
     else if (m.kind !== 'texture') err(`${path}.textureId`, `media '${f.textureId}' is not a texture`);
@@ -271,6 +279,42 @@ export function parseMuseum(
   });
   uniq(zones, 'zones');
 
+  const areas: Area[] = preV3
+    ? []
+    : arr('areas').map((raw, i) => {
+        const p = `areas[${i}]`;
+        const blank: Area = { id: '', name: '', rect: { x: 0, y: 0, w: 1, h: 1 } };
+        if (!isObj(raw)) {
+          err(p, 'expected an object');
+          return blank;
+        }
+        const id = str(raw, 'id', p);
+        const nm = str(raw, 'name', p, false);
+        let rect = blank.rect;
+        if (!isObj(raw.rect)) err(`${p}.rect`, 'expected {x, y, w, h}');
+        else {
+          const r = raw.rect;
+          rect = {
+            x: num(r, 'x', `${p}.rect`),
+            y: num(r, 'y', `${p}.rect`),
+            w: num(r, 'w', `${p}.rect`, { positive: true }),
+            h: num(r, 'h', `${p}.rect`, { positive: true }),
+          };
+        }
+        const a: Area = { id, name: nm, rect };
+        if (raw.floor !== undefined) a.floor = finish(raw.floor, `${p}.floor`);
+        if (raw.ceiling !== undefined) a.ceiling = finish(raw.ceiling, `${p}.ceiling`);
+        if (a.floor === undefined && a.ceiling === undefined) err(p, "needs a 'floor' and/or a 'ceiling' finish");
+        return a;
+      });
+  uniq(areas, 'areas');
+  // Texture references of the area finishes (the settings/wall ones were checked above and removed from the list).
+  for (const { f, path } of finishes) {
+    const m = mediaById.get(f.textureId!);
+    if (!m) err(`${path}.textureId`, `no media with id '${f.textureId}'`);
+    else if (m.kind !== 'texture') err(`${path}.textureId`, `media '${f.textureId}' is not a texture`);
+  }
+
   if (errors.length) return { ok: false, errors };
   if (legacy) {
     // First work (array order) with a non-empty value wins, per field.
@@ -280,5 +324,5 @@ export function parseMuseum(
       for (const k of ['title', 'artist', 'description'] as const) if (!m[k] && label[k]) m[k] = label[k];
     }
   }
-  return { ok: true, museum: { version: MUSEUM_VERSION, name, settings, walls, works, zones, media } };
+  return { ok: true, museum: { version: MUSEUM_VERSION, name, settings, walls, works, zones, areas, media } };
 }

@@ -25,7 +25,9 @@ function load(): Museum {
 describe('stress museum + planStreaming', () => {
   const m = load();
 
-  it('is a valid v2 museum of the expected size', () => {
+  it('is a valid v3 museum of the expected size', () => {
+    expect(m.version).toBe(3);
+    expect(m.areas.length).toBe(30);
     expect(m.works.length).toBe(500);
     expect(m.zones.length).toBe(90);
     expect(m.media.filter((x) => x.kind === 'image').length).toBe(500);
@@ -36,11 +38,12 @@ describe('stress museum + planStreaming', () => {
     const meshes: THREE.Mesh[] = [];
     built.group.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
     // floor + ceiling + 1 merged wall mesh (one finish) + 1 merged frames + 1 merged placeholder panels
-    expect(meshes.length).toBe(5);
+    // + one merged mesh per distinct area finish and surface (30 areas: 3 floor colours + 2 ceiling colours)
+    expect(meshes.length).toBe(5 + 3 + 2);
     expect(built.slots.length).toBe(500);
     expect(built.warnings).toEqual([]);
     // images + labels only exist for streamed works: at most 2 meshes per resident work
-    expect(5 + 2 * PAINTING_LIMITS.maxResident).toBeLessThan(150);
+    expect(meshes.length + 2 * PAINTING_LIMITS.maxResident).toBeLessThan(160);
   });
 
   it('refuses to write into public/museum', () => {
