@@ -1,11 +1,24 @@
 {
-  "version": 1,
+  "version": 3,
   "name": "Sample Museum",
   "settings": {
     "wallHeight": 3,
     "wallThickness": 0.2,
     "gridSize": 0.5,
     "ceiling": true,
+    "wallFinish": {
+      "color": "#b45231",
+      "tileSize": 1,
+      "textureId": "m-8oqjxk"
+    },
+    "floorFinish": {
+      "color": "#e6e3dd",
+      "tileSize": 1
+    },
+    "ceilingFinish": {
+      "color": "#ffffff",
+      "tileSize": 1
+    },
     "spawn": {
       "x": 4,
       "y": 5,
@@ -13,28 +26,6 @@
     }
   },
   "walls": [
-    {
-      "id": "wA-top",
-      "a": {
-        "x": 0,
-        "y": 0
-      },
-      "b": {
-        "x": 8,
-        "y": 0
-      }
-    },
-    {
-      "id": "wA-bottom",
-      "a": {
-        "x": 8,
-        "y": 6
-      },
-      "b": {
-        "x": 0,
-        "y": 6
-      }
-    },
     {
       "id": "wA-left",
       "a": {
@@ -80,17 +71,6 @@
       }
     },
     {
-      "id": "wB-bottom",
-      "a": {
-        "x": 16,
-        "y": 6
-      },
-      "b": {
-        "x": 8,
-        "y": 6
-      }
-    },
-    {
       "id": "wB-right",
       "a": {
         "x": 16,
@@ -100,43 +80,204 @@
         "x": 16,
         "y": 6
       }
+    },
+    {
+      "id": "wall-l8glna",
+      "a": {
+        "x": 3,
+        "y": 6
+      },
+      "b": {
+        "x": 3,
+        "y": 10
+      }
+    },
+    {
+      "id": "wall-v0qr6d",
+      "a": {
+        "x": 3,
+        "y": 10
+      },
+      "b": {
+        "x": -4.5,
+        "y": 10
+      }
+    },
+    {
+      "id": "wall-4emn9d",
+      "a": {
+        "x": -4.5,
+        "y": 10
+      },
+      "b": {
+        "x": 0,
+        "y": 6
+      }
+    },
+    {
+      "id": "wall-nxnaod",
+      "a": {
+        "x": 3,
+        "y": 6
+      },
+      "b": {
+        "x": 8,
+        "y": 6
+      }
+    },
+    {
+      "id": "wall-0m2qwn",
+      "a": {
+        "x": 16,
+        "y": 6
+      },
+      "b": {
+        "x": 16,
+        "y": 9.5
+      }
+    },
+    {
+      "id": "wall-hc79wa",
+      "a": {
+        "x": 16,
+        "y": 9.5
+      },
+      "b": {
+        "x": 10.5,
+        "y": 9.5
+      }
+    },
+    {
+      "id": "wall-xwf10d",
+      "a": {
+        "x": 10.5,
+        "y": 9.5
+      },
+      "b": {
+        "x": 10.5,
+        "y": 6
+      }
+    },
+    {
+      "id": "wall-2klre1",
+      "a": {
+        "x": 10.5,
+        "y": 6
+      },
+      "b": {
+        "x": 8,
+        "y": 6
+      }
+    },
+    {
+      "id": "wall-d7sgmq",
+      "a": {
+        "x": -2,
+        "y": -16
+      },
+      "b": {
+        "x": 8.5,
+        "y": -16
+      }
+    },
+    {
+      "id": "wall-jbzmhr",
+      "a": {
+        "x": 8.5,
+        "y": -16
+      },
+      "b": {
+        "x": 8.5,
+        "y": -11
+      }
+    },
+    {
+      "id": "wall-owyr2j",
+      "a": {
+        "x": -2,
+        "y": -11
+      },
+      "b": {
+        "x": -2,
+        "y": -16
+      }
+    },
+    {
+      "id": "wall-tb0rfo",
+      "a": {
+        "x": 4,
+        "y": -11
+      },
+      "b": {
+        "x": 4,
+        "y": 0
+      }
+    },
+    {
+      "id": "wall-ioqodz",
+      "a": {
+        "x": 2.5,
+        "y": -11
+      },
+      "b": {
+        "x": 2.5,
+        "y": 0
+      }
+    },
+    {
+      "id": "wall-u5es2e",
+      "a": {
+        "x": 2.5,
+        "y": 0
+      },
+      "b": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "wall-7b92ju",
+      "a": {
+        "x": 4,
+        "y": 0
+      },
+      "b": {
+        "x": 8,
+        "y": 0
+      }
+    },
+    {
+      "id": "wall-b44wet",
+      "a": {
+        "x": 8.5,
+        "y": -11
+      },
+      "b": {
+        "x": 4,
+        "y": -11
+      }
+    },
+    {
+      "id": "wall-wl3y1q",
+      "a": {
+        "x": 2.5,
+        "y": -11
+      },
+      "b": {
+        "x": -2,
+        "y": -11
+      }
     }
   ],
   "works": [
-    {
-      "id": "wk1",
-      "mediaId": "img1",
-      "wallId": "wA-top",
-      "side": 1,
-      "t": 4,
-      "centerHeight": 1.5,
-      "width": 2.4,
-      "title": "Sunrise",
-      "artist": "A. Student",
-      "description": "Gradient study, 2026"
-    },
     {
       "id": "wk2",
       "mediaId": "img2",
       "wallId": "wA-left",
       "side": 1,
-      "t": 3,
+      "t": 3.2,
       "centerHeight": 1.5,
-      "width": 1.2,
-      "title": "Forest",
-      "artist": "B. Student"
-    },
-    {
-      "id": "wk3",
-      "mediaId": "img3",
-      "wallId": "wA-bottom",
-      "side": 1,
-      "t": 4,
-      "centerHeight": 1.5,
-      "width": 1.5,
-      "title": "Tide",
-      "artist": "C. Student",
-      "description": "Square format."
+      "width": 1.2
     },
     {
       "id": "wk4",
@@ -145,9 +286,7 @@
       "side": -1,
       "t": 1,
       "centerHeight": 1.5,
-      "width": 1.2,
-      "title": "Ember",
-      "artist": "D. Student"
+      "width": 1.2
     },
     {
       "id": "wk5",
@@ -156,10 +295,7 @@
       "side": 1,
       "t": 4,
       "centerHeight": 1.5,
-      "width": 2.8,
-      "title": "Dusk",
-      "artist": "E. Student",
-      "description": "Panoramic."
+      "width": 2.8
     },
     {
       "id": "wk6",
@@ -168,10 +304,79 @@
       "side": 1,
       "t": 3,
       "centerHeight": 1.5,
-      "width": 1.3,
-      "title": "Meadow",
-      "artist": "F. Student",
-      "description": "Hangs on the far wall of room B."
+      "width": 1.3
+    },
+    {
+      "id": "work-66715b",
+      "mediaId": "img6",
+      "wallId": "wall-4emn9d",
+      "side": 1,
+      "t": 3.1,
+      "centerHeight": 1.5,
+      "width": 1
+    },
+    {
+      "id": "work-uddmse",
+      "mediaId": "img6",
+      "wallId": "wall-v0qr6d",
+      "side": 1,
+      "t": 2.25,
+      "centerHeight": 1.5,
+      "width": 1
+    },
+    {
+      "id": "work-jx39nt",
+      "mediaId": "img1",
+      "wallId": "wall-xwf10d",
+      "side": 1,
+      "t": 1.5,
+      "centerHeight": 1.5,
+      "width": 1
+    },
+    {
+      "id": "work-t4owgr",
+      "mediaId": "img1",
+      "wallId": "wall-hc79wa",
+      "side": 1,
+      "t": 2.75,
+      "centerHeight": 1.5,
+      "width": 1
+    },
+    {
+      "id": "work-dwbudo",
+      "mediaId": "img1",
+      "wallId": "wall-0m2qwn",
+      "side": 1,
+      "t": 0.95,
+      "centerHeight": 1.5,
+      "width": 1
+    },
+    {
+      "id": "work-jgmu1v",
+      "mediaId": "m-m4dy9z",
+      "wallId": "wall-nxnaod",
+      "side": -1,
+      "t": 3.8,
+      "centerHeight": 1.5,
+      "width": 1
+    },
+    {
+      "id": "work-3qsotm",
+      "mediaId": "m-nji1eq",
+      "wallId": "wB-right",
+      "side": 1,
+      "t": 1.5,
+      "centerHeight": 1.5,
+      "width": 1
+    },
+    {
+      "id": "work-gvurri",
+      "mediaId": "m-mlvrgs",
+      "wallId": "wall-hc79wa",
+      "side": 1,
+      "t": 1.25,
+      "centerHeight": 1.5,
+      "width": 1
     }
   ],
   "zones": [
@@ -201,6 +406,72 @@
       },
       "volume": 0.6,
       "fade": 1.5
+    },
+    {
+      "id": "zone-jl3r54",
+      "name": "Zone 3",
+      "mediaId": "aud2",
+      "shape": {
+        "kind": "circle",
+        "cx": 0.5,
+        "cy": 8,
+        "r": 1.118
+      },
+      "volume": 0.8,
+      "fade": 1
+    }
+  ],
+  "areas": [
+    {
+      "id": "area-uj7lfr",
+      "name": "Area 1",
+      "rect": {
+        "x": -4.5,
+        "y": 0,
+        "w": 20.5,
+        "h": 10
+      },
+      "floor": {
+        "color": "#ffffff",
+        "tileSize": 1,
+        "textureId": "m-pkviob"
+      },
+      "ceiling": {
+        "color": "#ffffff",
+        "tileSize": 1
+      }
+    },
+    {
+      "id": "area-o7yt13",
+      "name": "Area 2",
+      "rect": {
+        "x": 12,
+        "y": 6,
+        "w": 2.5,
+        "h": 2
+      },
+      "floor": {
+        "color": "#c9b99a",
+        "tileSize": 1
+      }
+    },
+    {
+      "id": "area-2kpxdv",
+      "name": "Area 3",
+      "rect": {
+        "x": -2,
+        "y": -16,
+        "w": 10.5,
+        "h": 5
+      },
+      "floor": {
+        "color": "#c9b99a",
+        "tileSize": 1
+      },
+      "ceiling": {
+        "color": "#ffffff",
+        "tileSize": 1
+      }
     }
   ],
   "media": [
@@ -210,7 +481,10 @@
       "file": "media/sunrise.png",
       "name": "Sunrise.png",
       "width": 800,
-      "height": 500
+      "height": 500,
+      "title": "Sunrise",
+      "artist": "A. Student",
+      "description": "Gradient study, 2026"
     },
     {
       "id": "img2",
@@ -218,7 +492,9 @@
       "file": "media/forest.png",
       "name": "Forest.png",
       "width": 500,
-      "height": 700
+      "height": 700,
+      "title": "Forest",
+      "artist": "B. Student"
     },
     {
       "id": "img3",
@@ -234,7 +510,9 @@
       "file": "media/ember.png",
       "name": "Ember.png",
       "width": 700,
-      "height": 400
+      "height": 400,
+      "title": "Ember",
+      "artist": "D. Student"
     },
     {
       "id": "img5",
@@ -242,7 +520,10 @@
       "file": "media/dusk.png",
       "name": "Dusk.png",
       "width": 1000,
-      "height": 500
+      "height": 500,
+      "title": "Dusk",
+      "artist": "E. Student",
+      "description": "Panoramic."
     },
     {
       "id": "img6",
@@ -250,7 +531,10 @@
       "file": "media/meadow.png",
       "name": "Meadow.png",
       "width": 480,
-      "height": 720
+      "height": 720,
+      "title": "Meadow",
+      "artist": "F. Student",
+      "description": "Hangs on the far wall of room B."
     },
     {
       "id": "aud1",
@@ -263,6 +547,58 @@
       "kind": "audio",
       "file": "media/chime.wav",
       "name": "Chime.wav"
+    },
+    {
+      "id": "m-m4dy9z",
+      "kind": "image",
+      "file": "media/y26jkp6h88.jpg",
+      "name": "DSC05933.JPG",
+      "width": 1600,
+      "height": 1200,
+      "title": "DSC05933"
+    },
+    {
+      "id": "m-nji1eq",
+      "kind": "image",
+      "file": "media/ijcfte4hh1.jpg",
+      "name": "DSC05998.JPG",
+      "width": 1600,
+      "height": 1200,
+      "title": "DSC05998"
+    },
+    {
+      "id": "m-mlvrgs",
+      "kind": "image",
+      "file": "media/ks5brcxoop.jpg",
+      "name": "DSC06028.JPG",
+      "width": 1200,
+      "height": 1600,
+      "title": "DSC06028"
+    },
+    {
+      "id": "m-3s84km",
+      "kind": "image",
+      "file": "media/li4z38p13s.jpg",
+      "name": "DSC05887.JPG",
+      "width": 1600,
+      "height": 1200,
+      "title": "DSC05887"
+    },
+    {
+      "id": "m-8oqjxk",
+      "kind": "texture",
+      "file": "media/jcp49zwamo.jpg",
+      "name": "6W.jpg",
+      "width": 512,
+      "height": 512
+    },
+    {
+      "id": "m-pkviob",
+      "kind": "texture",
+      "file": "media/rry0gjtjy2.jpg",
+      "name": "23W.jpg",
+      "width": 512,
+      "height": 512
     }
   ]
 }
