@@ -180,5 +180,6 @@ body.lib-resizing * { cursor: row-resize !important; }
 .area.ceiling-only .area-outline { stroke-dasharray: 5 3; }
 .area.selected .area-outline { stroke: var(--accent); stroke-width: 2.5; }
 .area-outline.draft { stroke: var(--accent); stroke-dasharray: 6 4; }
-.area-label { fill: #5b3a00; pointer-events: none; font-weight: 600; paint-order: stroke; stroke: rgba(255,255,255,0.8); stroke-width: 3px; }
+/* stroke-width is set per render in screen pixels (SVG user units are metres here) */
+.area-label { fill: #5b3a00; pointer-events: none; font-weight: 600; paint-order: stroke; stroke: rgba(255,255,255,0.8); stroke-linejoin: round; }
 .stack-buttons { flex-wrap: wrap; }

@@ -609,7 +609,7 @@ export function Canvas(p: Props) {
                 {pat && <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={`url(#${pat.id})`} fillOpacity={0.6} />}
                 <rect className="area-outline" x={r.x} y={r.y} width={r.w} height={r.h} />
                 {layer === 'areas' && (
-                  <text className="area-label" x={r.x + r.w / 2} y={r.y + r.h / 2} fontSize={fs} textAnchor="middle" dominantBaseline="middle">
+                  <text className="area-label" x={r.x + r.w / 2} y={r.y + r.h / 2} fontSize={fs} strokeWidth={3 * px} textAnchor="middle" dominantBaseline="middle">
                     {a.name || a.id} · {tag}
                   </text>
                 )}
