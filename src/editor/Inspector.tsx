@@ -8,7 +8,7 @@ import {
   updateZone,
 } from './model';
 import { Field, NumField } from './fields';
-import { ceilingModeOf, deleteArea, duplicateArea, findArea, reorderArea, setAreaRect, setCeilingMode, updateArea, type CeilingMode, type Reorder } from './areaModel';
+import { ceilingModeOf, deleteArea, findArea, reorderArea, setAreaRect, setCeilingMode, updateArea, type CeilingMode, type Reorder } from './areaModel';
 import type { Selection } from './types';
 
 interface Props {
@@ -20,12 +20,14 @@ interface Props {
   /** `key` coalesces consecutive edits of the same field into one undo step. */
   onChange(m: Museum, key?: string): void;
   onDeleted(): void;
+  /** Duplicate the selection (areas: same path as Ctrl/Cmd+D). */
+  onDuplicate?(): void;
 }
 
 const title = (x: MediaItem) => x.title || x.name;
 
 /** Colour, texture and tile size of a wall finish. */
-function FinishFields({ finish, museum: m, keyPrefix, onChange }: { finish: WallFinish; museum: Museum; keyPrefix: string; onChange(f: WallFinish, key: string): void }) {
+export function FinishFields({ finish, museum: m, keyPrefix, onChange }: { finish: WallFinish; museum: Museum; keyPrefix: string; onChange(f: WallFinish, key: string): void }) {
   const textures = m.media.filter((x) => x.kind === 'texture');
   const missing = finish.textureId !== undefined && !textures.some((t) => t.id === finish.textureId);
   const set = (patch: Partial<WallFinish>, key: string) => {
@@ -107,7 +109,7 @@ function FillWallPanel({ museum: m, wall, onChange }: { museum: Museum; wall: Wa
   );
 }
 
-export function Inspector({ museum: m, mediaUrl, selection, selectedMediaId, onChange, onDeleted }: Props) {
+export function Inspector({ museum: m, mediaUrl, selection, selectedMediaId, onChange, onDeleted, onDuplicate }: Props) {
   const del = (fn: (m: Museum) => Museum) => (
     <button
       className="danger"
@@ -310,10 +312,7 @@ export function Inspector({ museum: m, mediaUrl, selection, selectedMediaId, onC
         <p className="hint">Later areas are drawn on top of earlier ones.</p>
         <div className="row">
           <button
-            onClick={() => {
-              const r = duplicateArea(m, a.id);
-              if (r) onChange(r.museum);
-            }}
+            onClick={() => onDuplicate?.()}
             title="Ctrl/Cmd+D"
           >
             Duplicate

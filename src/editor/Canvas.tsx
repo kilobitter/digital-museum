@@ -10,6 +10,10 @@ import { areaHandles, hitTestAreas } from './hit';
 import {
   addArea, areaTag, fillRoom, findArea, SKY_BLUE, MIN_AREA_SIZE, moveArea, rectFromDrag, resizeAreaRect, snapAreaMove, snapAreaPoint, updateArea,
 } from './areaModel';
+import { cutDoorway, findDoorTarget } from './doorway';
+import {
+  EMPTY_SEL, hasItem, itemsInRect, moveSelection, selCount, toggleItem, unionSel, type ItemRef, type MultiSel,
+} from './multiSelect';
 import type { Layer, Selection, Tool } from './types';
 
 export interface CanvasHandle {
@@ -23,13 +27,21 @@ interface Props {
   mediaUrl(file: string): string | undefined;
   tool: Tool;
   layer: Layer;
+  /** The single selected item (handles, inspector); null when zero or several items are selected. */
   selection: Selection;
+  /** Everything selected (highlighting, group drag). */
+  multi: MultiSel;
+  /** Box selection / Shift+click may pick areas in the Build layer. */
+  includeAreas: boolean;
+  /** Door tool: gap width in metres. */
+  doorWidth: number;
   selectedMediaId: string | null;
   /** Hang a randomly chosen painting on each click instead of the selected one. */
   randomHang: boolean;
   /** Audio media to give new zones (selected in the library, or the first one). */
   audioMediaId: string | null;
   onSelect(s: Selection): void;
+  onSelectMulti(s: MultiSel): void;
   /** Live change during a drag (not undoable on its own). */
   onPreview(m: Museum): void;
   /** Finish a drag: `base` is the state before it began. */
@@ -53,7 +65,24 @@ type Drag =
   | { kind: 'spawn'; base: Museum; start: Vec2; moved: boolean }
   | { kind: 'spawnTool'; base: Museum; start: Vec2; moved: boolean }
   | { kind: 'area'; base: Museum; id: string; start: Vec2; moved: boolean }
-  | { kind: 'areaHandle'; base: Museum; id: string; handle: 'nw' | 'ne' | 'se' | 'sw'; moved: boolean };
+  | { kind: 'areaHandle'; base: Museum; id: string; handle: 'nw' | 'ne' | 'se' | 'sw'; moved: boolean }
+  /** Moves every selected item; a plain click (no movement) on one of them narrows the selection to `click`. */
+  | { kind: 'group'; base: Museum; sel: MultiSel; start: Vec2; moved: boolean; last: string; click: MultiSel | null };
+
+/** Selection box being dragged on empty canvas (screen px start decides when a click becomes a drag). */
+interface BoxDrag { a: Vec2; px: Vec2; additive: boolean; moved: boolean }
+const BOX_MIN_PX = 4;
+
+function hitRef(h: ReturnType<typeof hitTest>): ItemRef | null {
+  if (!h) return null;
+  if (h.type === 'spawn') return { kind: 'spawn' };
+  if (h.type === 'wallEnd' || h.type === 'wall') return { kind: 'wall', id: h.id };
+  if (h.type === 'zoneHandle' || h.type === 'zone') return { kind: 'zone', id: h.id };
+  return { kind: 'work', id: h.id };
+}
+function refSel(r: ItemRef): MultiSel {
+  return toggleItem(EMPTY_SEL, r);
+}
 
 type Draft =
   | { kind: 'room'; start: Vec2 }
@@ -93,6 +122,8 @@ export function Canvas(p: Props) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [panning, setPanning] = useState(false);
   const drag = useRef<Drag | null>(null);
+  const boxRef = useRef<BoxDrag | null>(null);
+  const [box, setBox] = useState<{ a: Vec2; b: Vec2 } | null>(null);
   const pan = useRef<{ x: number; y: number; cx: number; cy: number } | null>(null);
   const fitted = useRef(false);
 
@@ -110,7 +141,9 @@ export function Canvas(p: Props) {
     p.handleRef,
     () => ({
       cancelDraft() {
-        const had = chain !== null || draft !== null || drag.current !== null;
+        const had = chain !== null || draft !== null || drag.current !== null || boxRef.current !== null;
+        boxRef.current = null;
+        setBox(null);
         if (drag.current) {
           p.onPreview(drag.current.base);
           drag.current = null;
@@ -220,6 +253,7 @@ export function Canvas(p: Props) {
     const d = drag.current;
     drag.current = null;
     if (d?.moved) p.onCommit(d.base);
+    else if (d?.kind === 'group' && d.click) p.onSelectMulti(d.click);
     p.onInteraction(false);
   };
 
@@ -241,9 +275,26 @@ export function Canvas(p: Props) {
 
     switch (tool) {
       case 'select': {
+        const shift = e.shiftKey;
+        const count = selCount(p.multi);
+        const startBox = () => {
+          boxRef.current = { a: pt, px: { x: e.clientX, y: e.clientY }, additive: shift, moved: false };
+        };
+        const startGroup = (click: MultiSel | null) => {
+          drag.current = { kind: 'group', base: m, sel: p.multi, start: snapPoint(pt, grid), moved: false, last: '0,0', click };
+        };
         if (layer === 'areas') {
           const ah = hitTestAreas(m, pt, tol, selection?.type === 'area' ? selection.id : null);
-          if (!ah) return p.onSelect(null);
+          if (shift) {
+            if (ah) p.onSelectMulti(toggleItem(p.multi, { kind: 'area', id: ah.id }));
+            else startBox();
+            return;
+          }
+          if (!ah) return startBox();
+          if (ah.type === 'area' && count >= 2 && p.multi.areas.includes(ah.id)) {
+            startGroup(refSel({ kind: 'area', id: ah.id }));
+            break;
+          }
           if (ah.type === 'area') {
             p.onSelect({ type: 'area', id: ah.id });
             drag.current = { kind: 'area', base: m, id: ah.id, start: snapPoint(pt, grid), moved: false };
@@ -251,7 +302,28 @@ export function Canvas(p: Props) {
           break;
         }
         const hit = hitTest(m, pt, tol, selection?.type === 'zone' ? selection.id : null);
-        if (!hit) return p.onSelect(null);
+        const ref = hitRef(hit);
+        if (shift) {
+          if (ref) p.onSelectMulti(toggleItem(p.multi, ref));
+          else startBox();
+          return;
+        }
+        if (!hit) {
+          // areas selected through a box are not hit-testable; let them be dragged from inside
+          const inArea = count >= 1 && !selection && p.multi.areas.some((id) => {
+            const r = findArea(m, id)?.rect;
+            return r && pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h;
+          });
+          if (inArea) {
+            startGroup(null);
+            break;
+          }
+          return startBox();
+        }
+        if (count >= 2 && ref && hasItem(p.multi, ref)) {
+          startGroup(refSel(ref));
+          break;
+        }
         switch (hit.type) {
           case 'wallEnd':
             p.onSelect({ type: 'wall', id: hit.id });
@@ -277,6 +349,22 @@ export function Canvas(p: Props) {
             drag.current = { kind: 'spawn', base: m, start: snapPoint(pt, grid), moved: false };
             break;
         }
+        break;
+      }
+      case 'door': {
+        const t = findDoorTarget(m, pt, tol, p.doorWidth);
+        if (!t) {
+          p.onNotice('Click on a wall to cut a doorway.');
+          return;
+        }
+        const r = cutDoorway(m, t.wallId, t.centreT, p.doorWidth);
+        if (!r.ok) {
+          p.onNotice(r.reason);
+          return;
+        }
+        p.onChange(r.museum);
+        const n = r.removedWorks.length;
+        if (n > 0) p.onNotice(`${n} painting${n === 1 ? ' was' : 's were'} taken down to make room for the door. Undo (Ctrl/Cmd+Z) puts ${n === 1 ? 'it' : 'them'} back.`);
         break;
       }
       case 'wall': {
@@ -365,6 +453,12 @@ export function Canvas(p: Props) {
     }
     const pt = toPlan(e);
     setCursor(tool === 'wall' || tool === 'room' ? snap(pt, true) : tool === 'areaRect' ? snapAreaPoint(m, pt, grid) : pt);
+    const bx = boxRef.current;
+    if (bx) {
+      if (!bx.moved && Math.hypot(e.clientX - bx.px.x, e.clientY - bx.px.y) > BOX_MIN_PX) bx.moved = true;
+      if (bx.moved) setBox({ a: bx.a, b: pt });
+      return;
+    }
     const d = drag.current;
     if (!d) return;
     const base = d.base;
@@ -431,6 +525,16 @@ export function Canvas(p: Props) {
         p.onPreview(updateArea(base, d.id, { rect: resizeAreaRect(a.rect, d.handle, snapAreaPoint(base, pt, grid), MIN_AREA_SIZE) }));
         break;
       }
+      case 'group': {
+        const s = snapPoint(pt, grid);
+        const dx = round4(s.x - d.start.x), dy = round4(s.y - d.start.y);
+        const key = `${dx},${dy}`;
+        if (key === d.last) return; // same grid cell: nothing to recompute
+        d.last = key;
+        d.moved = true;
+        p.onPreview(dx === 0 && dy === 0 ? base : moveSelection(base, d.sel, { x: dx, y: dy }));
+        break;
+      }
       case 'spawnTool': {
         const dx = pt.x - d.start.x, dy = pt.y - d.start.y;
         if (Math.hypot(dx, dy) > 0.15) {
@@ -446,6 +550,18 @@ export function Canvas(p: Props) {
     if (pan.current) {
       pan.current = null;
       setPanning(false);
+      return;
+    }
+    const bx = boxRef.current;
+    if (bx) {
+      boxRef.current = null;
+      setBox(null);
+      if (bx.moved) {
+        const b = toPlan(e);
+        const rect = { x: Math.min(bx.a.x, b.x), y: Math.min(bx.a.y, b.y), w: Math.abs(b.x - bx.a.x), h: Math.abs(b.y - bx.a.y) };
+        const found = itemsInRect(m, rect, layer === 'areas' ? { walls: false, works: false, zones: false, spawn: false } : { areas: p.includeAreas });
+        p.onSelectMulti(bx.additive ? unionSel(p.multi, found) : found);
+      } else if (!bx.additive) p.onSelectMulti(EMPTY_SEL);
       return;
     }
     if (draft) {
@@ -518,6 +634,12 @@ export function Canvas(p: Props) {
   }, [view.scale]);
 
   const th = m.settings.wallThickness;
+  const sets = useMemo(
+    () => ({ walls: new Set(p.multi.walls), works: new Set(p.multi.works), zones: new Set(p.multi.zones), areas: new Set(p.multi.areas) }),
+    [p.multi],
+  );
+  const doorT = tool === 'door' && cursor ? findDoorTarget(m, cursor, tol, p.doorWidth) : null;
+  const doorWall = doorT && m.walls.find((w) => w.id === doorT.wallId);
   const selWall = selection?.type === 'wall' ? m.walls.find((w) => w.id === selection.id) : undefined;
   const selZone = selection?.type === 'zone' ? findZone(m, selection.id) : undefined;
   const ghostMediaId = p.randomHang ? m.media.find((x) => x.kind === 'image')?.id ?? null : p.selectedMediaId;
@@ -604,7 +726,7 @@ export function Canvas(p: Props) {
           {m.areas.map((a) => {
             const f = areaFace(a);
             const pat = f.textureId ? patterns.get(`${f.textureId}|${f.tileSize}`) : undefined;
-            const sel = selection?.type === 'area' && selection.id === a.id;
+            const sel = sets.areas.has(a.id);
             const r = a.rect;
             const tag = areaTag(a);
             return (
@@ -628,12 +750,20 @@ export function Canvas(p: Props) {
           {fillPreview && <rect className="area-outline draft" x={fillPreview.x} y={fillPreview.y} width={fillPreview.w} height={fillPreview.h} />}
         </g>
 
+        {layer === 'build' && sets.areas.size > 0 && (
+          <g>
+            {m.areas.filter((a) => sets.areas.has(a.id)).map((a) => (
+              <rect key={a.id} className="area-selected-build" x={a.rect.x} y={a.rect.y} width={a.rect.w} height={a.rect.h} />
+            ))}
+          </g>
+        )}
+
         <g className={dim}>
         {m.zones.map((z) => {
           const inner = selection?.type === 'zone' && selection.id === z.id ? insetShape(z.shape, z.fade) : null;
           const c = z.shape.kind === 'rect' ? { x: z.shape.x + z.shape.w / 2, y: z.shape.y + z.shape.h / 2 } : { x: z.shape.cx, y: z.shape.cy };
           return (
-            <g key={z.id} className={selection?.type === 'zone' && selection.id === z.id ? 'zone selected' : 'zone'}>
+            <g key={z.id} className={sets.zones.has(z.id) ? 'zone selected' : 'zone'}>
               {shapeEl(z.shape, 'zone-shape')}
               {inner && shapeEl(inner, 'zone-fade')}
               <text className="zone-label" x={c.x} y={c.y} fontSize={fs * 1.1} textAnchor="middle" dominantBaseline="middle">♪ {z.name}</text>
@@ -643,7 +773,7 @@ export function Canvas(p: Props) {
 
         {m.walls.map((w) => (
           <g key={w.id}>
-            <line className={'wall' + (w.finish ? ' custom' : '') + (selection?.type === 'wall' && selection.id === w.id ? ' selected' : '')} x1={w.a.x} y1={w.a.y} x2={w.b.x} y2={w.b.y} strokeWidth={th} />
+            <line className={'wall' + (w.finish ? ' custom' : '') + (sets.walls.has(w.id) ? ' selected' : '')} x1={w.a.x} y1={w.a.y} x2={w.b.x} y2={w.b.y} strokeWidth={th} />
           </g>
         ))}
         {m.walls.map((w) =>
@@ -657,7 +787,7 @@ export function Canvas(p: Props) {
           const d = wallDirection(wall);
           const h = w.width / 2, off = 0.05;
           const ox = normal.x * off, oy = normal.y * off;
-          const sel = selection?.type === 'work' && selection.id === w.id;
+          const sel = sets.works.has(w.id);
           return (
             <line
               key={w.id}
@@ -686,7 +816,7 @@ export function Canvas(p: Props) {
             <rect key={h.handle} className="handle" x={h.p.x - 5 * px} y={h.p.y - 5 * px} width={10 * px} height={10 * px} />
           ))}
 
-        <g className={selection?.type === 'spawn' ? 'spawn selected' : 'spawn'}>
+        <g className={p.multi.spawn ? 'spawn selected' : 'spawn'}>
           <circle cx={spawn.x} cy={spawn.y} r={0.25} />
           <line x1={spawn.x} y1={spawn.y} x2={spawn.x + sdx * 0.8} y2={spawn.y + sdy * 0.8} />
           <polygon points={`${spawn.x + sdx * 0.95},${spawn.y + sdy * 0.95} ${spawn.x + sdx * 0.6 - sdy * 0.18},${spawn.y + sdy * 0.6 + sdx * 0.18} ${spawn.x + sdx * 0.6 + sdy * 0.18},${spawn.y + sdy * 0.6 - sdx * 0.18}`} />
@@ -716,6 +846,14 @@ export function Canvas(p: Props) {
           const ox = (n.x / nl) * ghost.side * 0.05, oy = (n.y / nl) * ghost.side * 0.05;
           return <line className="work ghost" x1={seg.a.x + ox} y1={seg.a.y + oy} x2={seg.b.x + ox} y2={seg.b.y + oy} strokeWidth={0.1} />;
         })()}
+        {doorT && doorWall && (
+          doorT.line ? (
+            <line className="door-gap" x1={doorT.line.a.x} y1={doorT.line.a.y} x2={doorT.line.b.x} y2={doorT.line.b.y} strokeWidth={th * 1.6} />
+          ) : (
+            <line className="door-gap bad" x1={doorWall.a.x} y1={doorWall.a.y} x2={doorWall.b.x} y2={doorWall.b.y} strokeWidth={th * 1.6} />
+          )
+        )}
+        {box && <rect className="select-box" x={Math.min(box.a.x, box.b.x)} y={Math.min(box.a.y, box.b.y)} width={Math.abs(box.b.x - box.a.x)} height={Math.abs(box.b.y - box.a.y)} />}
         {tool === 'spawn' && cursor && !drag.current && <circle className="snap-dot" cx={snapPoint(cursor, grid).x} cy={snapPoint(cursor, grid).y} r={5 * px} />}
       </svg>
 

@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { Museum } from '../shared/museum';
 import { defaultMuseum, parseMuseum } from '../shared/validate';
 import type { MuseumStore } from './store';
@@ -9,13 +9,17 @@ import { Library, type Section } from './Library';
 import { LibraryResizer, useLibraryHeight } from './LibraryResizer';
 import { AUDIO_WARN_BYTES, MAX_PANORAMA_SIDE, MAX_TEXTURE_SIDE, PANORAMA_JPEG_QUALITY, isRoughlyEquirect, mediaKindOf, parsePaintingFilename, prepareImage } from './media';
 import { isDuplicate, runPool, summarizeUpload } from './uploadQueue';
-import {
-  addMedia, computeWarnings, deleteWall, deleteWork, deleteZone, findWall, findWork, findZone, removeMedia,
-} from './model';
+import { addMedia, computeWarnings, removeMedia } from './model';
 import { canRedo, canUndo, clearHistory, commitFrom, createHistory, push, redo, replace, undo, type History } from './history';
 import { shouldScheduleAutosave } from './autosave';
 import { LAYER_KEY, toolsFor, type Layer, type Selection, type Tool } from './types';
-import { deleteArea, duplicateArea, findArea } from './areaModel';
+import { MultiInspector } from './MultiInspector';
+import { Field, NumField } from './fields';
+import { DOOR_DEFAULT_M, clampDoorWidth } from './doorway';
+import {
+  EMPTY_SEL, allItems, cleanSelection, deleteSelection as deleteItems, duplicateOffset, duplicateSelection, fromSelection, isEmptySel, moveSelection,
+  rotateSelection, selCount, singleOf, type MultiSel,
+} from './multiSelect';
 
 type Action =
   | { type: 'reset'; museum: Museum }
@@ -59,6 +63,29 @@ function saveSizes(sizes: Record<string, number>): void {
   } catch { /* storage unavailable: duplicates then match on name only */ }
 }
 
+const INCLUDE_AREAS_KEY = 'museum-editor.includeAreas';
+const DOOR_WIDTH_KEY = 'museum-editor.doorWidth';
+function loadIncludeAreas(): boolean {
+  try {
+    return localStorage.getItem(INCLUDE_AREAS_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+function loadDoorWidth(): number {
+  try {
+    const raw = localStorage.getItem(DOOR_WIDTH_KEY);
+    return raw === null ? DOOR_DEFAULT_M : clampDoorWidth(Number(raw));
+  } catch {
+    return DOOR_DEFAULT_M;
+  }
+}
+function savePref(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch { /* preference just is not remembered */ }
+}
+
 const isField = (t: EventTarget | null) => t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
 
 type Boot = { phase: 'loading' } | { phase: 'invalid'; errors: string[] } | { phase: 'ready'; missing: boolean };
@@ -79,7 +106,9 @@ export function App({ store, onSwitchFolder }: EditorProps) {
   const [showErrors, setShowErrors] = useState(false);
   const [tool, setTool] = useState<Tool>('select');
   const [layer, setLayerState] = useState<Layer>('build');
-  const [selection, setSelection] = useState<Selection>(null);
+  const [rawMulti, setRawMulti] = useState<MultiSel>(EMPTY_SEL);
+  const [includeAreas, setIncludeAreasState] = useState(loadIncludeAreas);
+  const [doorWidth, setDoorWidthState] = useState(loadDoorWidth);
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -95,7 +124,13 @@ export function App({ store, onSwitchFolder }: EditorProps) {
   presentRef.current = museum;
   const layerRef = useRef(layer);
   layerRef.current = layer;
-  const selRef = useRef<Selection>(null);
+  const multiRef = useRef<MultiSel>(EMPTY_SEL);
+  const toolRef = useRef<Tool>('select');
+  toolRef.current = tool;
+  const includeAreasRef = useRef(includeAreas);
+  includeAreasRef.current = includeAreas;
+  /** Changes with every selection change, so a burst of arrow-key nudges merges into one undo step only for one selection. */
+  const selNonce = useRef(0);
   const savedRef = useRef<Museum | null>(null);
   savedRef.current = saved;
   const savingRef = useRef(false);
@@ -173,34 +208,78 @@ export function App({ store, onSwitchFolder }: EditorProps) {
     return () => window.removeEventListener('beforeunload', warn);
   }, []);
 
-  // ----- selection hygiene -----
-  const sel: Selection =
-    selection?.type === 'wall' ? (findWall(museum, selection.id) ? selection : null)
-    : selection?.type === 'work' ? (findWork(museum, selection.id) ? selection : null)
-    : selection?.type === 'zone' ? (findZone(museum, selection.id) ? selection : null)
-    : selection?.type === 'area' ? (layer === 'areas' && findArea(museum, selection.id) ? selection : null)
-    : selection && layer === 'areas' ? null // build things cannot be selected on the Areas layer
-    : selection;
+  // ----- selection -----
+  const multi = useMemo(() => cleanSelection(museum, rawMulti, layer), [museum, rawMulti, layer]);
+  const sel: Selection = singleOf(multi, layer);
+  multiRef.current = multi;
+
+  const setMultiSel = useCallback((ms: MultiSel) => {
+    selNonce.current++;
+    setRawMulti(ms);
+  }, []);
+  const setSelection = useCallback((s: Selection) => setMultiSel(fromSelection(s)), [setMultiSel]);
+  const setIncludeAreas = (v: boolean) => {
+    setIncludeAreasState(v);
+    savePref(INCLUDE_AREAS_KEY, String(v));
+  };
+  const setDoorWidth = (v: number) => {
+    const w = clampDoorWidth(v);
+    setDoorWidthState(w);
+    savePref(DOOR_WIDTH_KEY, String(w));
+  };
 
   const setLayer = useCallback((next: Layer) => {
     setLayerState(next);
-    setSelection(null);
+    setMultiSel(EMPTY_SEL);
     setTool('select');
     canvas.current?.cancelDraft();
-  }, []);
-
-  selRef.current = sel;
+  }, [setMultiSel]);
 
   const change = useCallback((m: Museum, key?: string) => dispatch({ type: 'push', museum: m, key }), []);
+
   const deleteSelection = useCallback(() => {
-    if (!sel) return;
-    if (sel.type === 'wall') dispatch({ type: 'edit', fn: (m) => deleteWall(m, sel.id) });
-    else if (sel.type === 'work') dispatch({ type: 'edit', fn: (m) => deleteWork(m, sel.id) });
-    else if (sel.type === 'zone') dispatch({ type: 'edit', fn: (m) => deleteZone(m, sel.id) });
-    else if (sel.type === 'area') dispatch({ type: 'edit', fn: (m) => deleteArea(m, sel.id) });
-    else return;
-    setSelection(null);
-  }, [sel]);
+    const ms = multiRef.current;
+    if (ms.walls.length + ms.works.length + ms.zones.length + ms.areas.length === 0) return;
+    dispatch({ type: 'edit', fn: (m) => deleteItems(m, ms) });
+    setMultiSel(EMPTY_SEL);
+  }, [setMultiSel]);
+
+  const duplicateSel = useCallback(() => {
+    const ms = multiRef.current;
+    if (isEmptySel(ms)) return;
+    const m = presentRef.current;
+    const r = duplicateSelection(m, ms, duplicateOffset(m.settings.gridSize));
+    if (selCount(r.selection) === 0 && r.museum.walls.length === m.walls.length && r.museum.works.length === m.works.length) {
+      notify(ms.spawn && selCount(ms) === 1 ? 'The spawn point cannot be duplicated.' : 'Nothing was copied: a lone painting is copied along its wall only if the copy still fits.');
+      return;
+    }
+    dispatch({ type: 'push', museum: r.museum });
+    setMultiSel(r.selection);
+  }, [notify, setMultiSel]);
+
+  const rotateSel = useCallback((dir: 1 | -1) => {
+    const ms = multiRef.current;
+    if (ms.walls.length + ms.zones.length + ms.areas.length === 0 && !ms.spawn) {
+      if (ms.works.length) notify('Paintings turn with their wall: select the wall as well.');
+      return;
+    }
+    dispatch({ type: 'edit', fn: (m) => rotateSelection(m, ms, dir) });
+  }, [notify]);
+
+  const nudgeSel = useCallback((dx: number, dy: number, steps: number): boolean => {
+    const ms = multiRef.current;
+    if (ms.walls.length + ms.zones.length + ms.areas.length === 0 && !ms.spawn) return false;
+    const g = presentRef.current.settings.gridSize * steps;
+    // one undo step per burst of nudges on the same selection
+    dispatch({ type: 'edit', key: `nudge.${selNonce.current}`, fn: (m) => moveSelection(m, ms, { x: dx * g, y: dy * g }) });
+    return true;
+  }, []);
+
+  const selectAll = useCallback(() => {
+    const areasOnly = layerRef.current === 'areas';
+    const m = presentRef.current;
+    setMultiSel(allItems(m, areasOnly ? { walls: false, works: false, zones: false, spawn: false } : { areas: includeAreasRef.current }));
+  }, [setMultiSel]);
 
   // ----- keyboard -----
   useEffect(() => {
@@ -219,14 +298,12 @@ export function App({ store, onSwitchFolder }: EditorProps) {
       }
       if (mod && e.key.toLowerCase() === 'd') {
         e.preventDefault();
-        const cur = selRef.current;
-        if (cur?.type === 'area') {
-          const r = duplicateArea(presentRef.current, cur.id);
-          if (r) {
-            dispatch({ type: 'push', museum: r.museum });
-            setSelection({ type: 'area', id: r.id });
-          }
-        }
+        duplicateSel();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        selectAll();
         return;
       }
       if (mod && e.key.toLowerCase() === 'y') {
@@ -236,7 +313,21 @@ export function App({ store, onSwitchFolder }: EditorProps) {
       }
       if (mod || e.altKey) return;
       if (e.key === 'Escape') {
-        if (!canvas.current?.cancelDraft()) setSelection(null);
+        if (canvas.current?.cancelDraft()) return;
+        if (toolRef.current === 'door') setTool('select');
+        else setMultiSel(EMPTY_SEL);
+        return;
+      }
+      if (e.key === '[' || e.key === ']') {
+        e.preventDefault();
+        rotateSel(e.key === ']' ? 1 : -1);
+        return;
+      }
+      if (e.key.startsWith('Arrow') && toolRef.current === 'select') {
+        const steps = e.shiftKey ? 5 : 1;
+        const dx = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+        const dy = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+        if ((dx || dy) && nudgeSel(dx, dy, steps)) e.preventDefault();
         return;
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -253,7 +344,7 @@ export function App({ store, onSwitchFolder }: EditorProps) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [saveNow, deleteSelection, setLayer]);
+  }, [saveNow, deleteSelection, setLayer, duplicateSel, selectAll, rotateSel, nudgeSel, setMultiSel]);
 
   // ----- media -----
   const audioMediaId =
@@ -500,10 +591,14 @@ export function App({ store, onSwitchFolder }: EditorProps) {
           tool={tool}
           layer={layer}
           selection={sel}
+          multi={multi}
+          includeAreas={includeAreas}
+          doorWidth={doorWidth}
           selectedMediaId={selectedMediaId && museum.media.find((x) => x.id === selectedMediaId)?.kind === 'image' ? selectedMediaId : null}
           randomHang={randomHang}
           audioMediaId={audioMediaId}
           onSelect={setSelection}
+          onSelectMulti={setMultiSel}
           onPreview={(m) => dispatch({ type: 'preview', museum: m })}
           onCommit={(base) => dispatch({ type: 'commit', base })}
           onChange={(m) => change(m)}
@@ -511,12 +606,30 @@ export function App({ store, onSwitchFolder }: EditorProps) {
           onInteraction={setInteracting}
         />
         <div className="hintbar">{layer === 'build' && tool === 'work' && randomHang ? 'Random painting: click a wall face to hang a painting you have not hung yet.' : toolsFor(layer).find((t) => t.tool === tool)?.hint}</div>
+        {layer === 'build' && tool === 'door' && (
+          <div className="tool-options">
+            <Field label="Door width"><NumField value={doorWidth} min={0.5} max={4} step={0.1} onChange={setDoorWidth} unit="m" /></Field>
+          </div>
+        )}
         {notice && <div className="toast" onClick={() => setNotice(null)}>{notice}</div>}
         {dropping && <div className="dropveil">Drop audio here, or images onto a library section</div>}
       </main>
 
       <aside className="sidebar">
-        <Inspector museum={museum} mediaUrl={store.mediaUrl} selection={sel} selectedMediaId={selectedMediaId} onChange={change} onDeleted={() => setSelection(null)} />
+        {!sel && !isEmptySel(multi) ? (
+          <MultiInspector
+            museum={museum}
+            multi={multi}
+            includeAreas={includeAreas}
+            onIncludeAreas={setIncludeAreas}
+            onChange={change}
+            onRotate={rotateSel}
+            onDuplicate={duplicateSel}
+            onDelete={deleteSelection}
+          />
+        ) : (
+          <Inspector museum={museum} mediaUrl={store.mediaUrl} selection={sel} selectedMediaId={selectedMediaId} onChange={change} onDeleted={() => setSelection(null)} onDuplicate={duplicateSel} />
+        )}
         <SettingsPanel museum={museum} onChange={change} />
         <section className="panel">
           <h3>Warnings {warnings.length > 0 && <span className="badge">{warnings.length}</span>}</h3>

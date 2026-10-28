@@ -73,6 +73,24 @@ on purpose: if it is taken, the server stops instead of quietly picking another 
     default gradient and shows a warning. The sky is not lit or fogged and does not move when you walk.
   - The lighting inside the museum is the same everywhere, so a very bright or dark panorama does not
     change how open areas are lit.
+- **Selecting many things** (Select tool): drag on empty canvas to draw a selection box (everything fully
+  inside is selected; Shift adds to the selection), **Shift+click** adds or removes one item, **Ctrl/Cmd+A**
+  selects everything on the current layer, Esc clears. On the Build layer the box picks walls, paintings,
+  zones and the spawn point, and, with the **Include areas** option (on by default, remembered), areas.
+  On the Areas layer it picks areas only. Panning stays Space+drag or the middle mouse button.
+  - With several items selected, drag any of them to move the whole group (snapped to the grid, one undo
+    step); the arrow keys nudge by one grid step (Shift: five; a run of nudges is one undo step).
+    Paintings move and turn with their walls. Walls that were joined to a moved wall but are not
+    selected stay behind (they detach).
+  - **`[`** rotates the selection 90 degrees counter-clockwise and **`]`** clockwise (about the centre of
+    the selection, kept on the grid; the spawn point turns to face accordingly). Also works for a single
+    wall, zone or area. **Ctrl/Cmd+D** duplicates (one metre down and right, snapped), **Delete** deletes.
+    The panel for a multi-selection has the same buttons, a count per kind and a finish editor that
+    applies to all selected walls.
+- **Door tool** (`D`): hover a wall to see the doorway (width set in the tool's panel, 0.5 to 4 m, default
+  1.2 m), click to cut it. The wall is split in two (finish kept); a leftover piece under 15 cm is
+  removed. **Paintings in the doorway are taken down** (the editor says how many); use Undo if that was a
+  mistake. Zones and areas are not changed.
 - Older `museum.json` files (format v1, v2 and v3) are upgraded automatically the next time they are saved.
 - `node scripts/make-sample.mjs <outDir>` writes a sample museum (with a small open-sky courtyard) to a folder of your choice. It refuses
   to overwrite `public/museum` unless you pass `--force`.

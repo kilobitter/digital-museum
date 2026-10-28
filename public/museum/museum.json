@@ -2,7 +2,7 @@
   "version": 4,
   "name": "Sample Museum",
   "settings": {
-    "wallHeight": 3,
+    "wallHeight": 5,
     "wallThickness": 0.2,
     "gridSize": 0.5,
     "ceiling": true,
@@ -280,9 +280,9 @@
       "mediaId": "img2",
       "wallId": "wA-left",
       "side": 1,
-      "t": 3.2,
-      "centerHeight": 1.5,
-      "width": 1.2
+      "t": 3.25,
+      "centerHeight": 2,
+      "width": 2.5
     },
     {
       "id": "wk4",
@@ -361,9 +361,9 @@
       "mediaId": "m-m4dy9z",
       "wallId": "wall-nxnaod",
       "side": -1,
-      "t": 3.8,
+      "t": 2.8,
       "centerHeight": 1.5,
-      "width": 1
+      "width": 2.5
     },
     {
       "id": "work-3qsotm",
