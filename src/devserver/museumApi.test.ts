@@ -13,6 +13,7 @@ import {
   generateId,
   isLoopback,
   isValidMediaFile,
+  resolveMuseumFile,
   readBody,
   resolveMediaPath,
   saveMedia,
@@ -87,6 +88,19 @@ describe('names and paths', () => {
     expect(resolveMediaPath(root, 'media/a.jpg')).toBe(path.join(root, 'media', 'a.jpg'));
     expect(resolveMediaPath(root, 'media/../museum.json')).toBeNull();
     expect(resolveMediaPath(root, '../x.jpg')).toBeNull();
+  });
+});
+
+describe('resolveMuseumFile', () => {
+  const root = '/srv/museum';
+  it('serves museum.json and valid media files', () => {
+    expect(resolveMuseumFile(root, 'museum.json')).toBe(path.join(root, 'museum.json'));
+    expect(resolveMuseumFile(root, 'media/ab12cd34ef.jpg')).toBe(path.join(root, 'media/ab12cd34ef.jpg'));
+  });
+  it('refuses anything else so it falls through to Vite', () => {
+    for (const rel of ['', 'museum.json.tmp-x', 'media/../museum.json', 'media/%2e%2e/x.jpg', 'media/a.exe', 'other.json', 'media/sub/a.jpg']) {
+      expect(resolveMuseumFile(root, rel)).toBeNull();
+    }
   });
 });
 

@@ -1,7 +1,7 @@
 // Dev-only write API for the editor. Registered with `apply: 'serve'`, so it never ends up in a build.
 // All request-independent logic is exported as plain functions taking the museum root dir.
 import { randomBytes } from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { createReadStream, promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
@@ -184,6 +184,28 @@ export function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   });
 }
 
+const CONTENT_TYPES: Record<string, string> = {
+  json: 'application/json',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  mp3: 'audio/mpeg',
+  m4a: 'audio/mp4',
+  aac: 'audio/aac',
+  ogg: 'audio/ogg',
+  wav: 'audio/wav',
+};
+
+/**
+ * Absolute path for a museum URL path (the part after "/museum/"): "museum.json" or a valid media file.
+ * Null for anything else, so other requests fall through to Vite.
+ */
+export function resolveMuseumFile(root: string, rel: string): string | null {
+  if (rel === 'museum.json') return path.join(root, 'museum.json');
+  return resolveMediaPath(root, rel);
+}
+
 // ---------- request handling ----------
 
 function send(res: ServerResponse, status: number, body: unknown, extra: Record<string, string> = {}) {
@@ -260,7 +282,25 @@ export function museumApi(projectRoot: string): Plugin {
           void handleApi(root, req, res);
           return;
         }
-        next();
+        // Serve museum content from disk ourselves: public/museum is excluded from the watcher (so saves
+        // don't reload pages), which also means Vite's public middleware never learns about new uploads.
+        const abs = p.startsWith('/museum/') && (req.method === 'GET' || req.method === 'HEAD')
+          ? resolveMuseumFile(root, p.slice('/museum/'.length))
+          : null;
+        if (!abs) return next();
+        fs.stat(abs).then(
+          (st) => {
+            if (!st.isFile()) return next();
+            res.writeHead(200, {
+              'Content-Type': CONTENT_TYPES[path.extname(abs).slice(1).toLowerCase()] ?? 'application/octet-stream',
+              'Content-Length': String(st.size),
+              'Cache-Control': 'no-cache',
+            });
+            if (req.method === 'HEAD') return void res.end();
+            createReadStream(abs).on('error', () => res.destroy()).pipe(res);
+          },
+          () => next(),
+        );
       });
     },
   };
