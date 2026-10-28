@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } 
 import type { MediaItem, Museum } from '../shared/museum';
 import { countLabel, filterPaintings, hungIds, paintingCounts, visibleWindow, type HungFilter } from './libraryFilter';
 import { mediaUsage } from './model';
+import { TAB_STORAGE_KEY, parseTab, tabForKey } from './libraryTabs';
 
 export type Section = 'image' | 'texture' | 'audio';
 
@@ -19,10 +20,10 @@ interface Props {
   onToggleRandom(): void;
 }
 
-const SECTIONS: { section: Section; title: string; accept: string; empty: string; flex: number }[] = [
-  { section: 'image', title: 'Paintings', accept: '.jpg,.jpeg,.png,.webp', empty: 'No paintings yet. Resized to 1600 px.', flex: 3 },
-  { section: 'texture', title: 'Textures', accept: '.jpg,.jpeg,.png,.webp', empty: 'No wall textures yet. Resized to 1024 px.', flex: 2 },
-  { section: 'audio', title: 'Audio', accept: '.mp3,.m4a,.aac,.ogg,.wav', empty: 'No audio yet.', flex: 2 },
+const SECTIONS: { section: Section; title: string; accept: string; empty: string }[] = [
+  { section: 'image', title: 'Paintings', accept: '.jpg,.jpeg,.png,.webp', empty: 'No paintings yet. Resized to 1600 px.' },
+  { section: 'texture', title: 'Textures', accept: '.jpg,.jpeg,.png,.webp', empty: 'No wall textures yet. Resized to 1024 px.' },
+  { section: 'audio', title: 'Audio', accept: '.mp3,.m4a,.aac,.ogg,.wav', empty: 'No audio yet.' },
 ];
 
 const CARD_STEP = 158; // card width 150 + gap 8 (see styles.css .card)
@@ -31,8 +32,15 @@ const CARD_STEP = 158; // card width 150 + gap 8 (see styles.css .card)
 function VirtualRow({ count, render, resetKey }: { count: number; render: (i: number) => ReactNode; resetKey: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ left: 0, width: 1200 });
+  const saved = useRef(0); // scroll offset to restore when a hidden tab becomes visible again
+  const lastWidth = useRef(0);
   const measure = () => {
     const el = ref.current;
+    if (el && el.clientWidth > 0) {
+      if (lastWidth.current === 0 && saved.current > 0) el.scrollLeft = saved.current;
+      else saved.current = el.scrollLeft;
+    }
+    if (el) lastWidth.current = el.clientWidth;
     if (el) setView((v) => (v.left === el.scrollLeft && v.width === el.clientWidth ? v : { left: el.scrollLeft, width: el.clientWidth }));
   };
   useEffect(() => {
@@ -44,6 +52,7 @@ function VirtualRow({ count, render, resetKey }: { count: number; render: (i: nu
     return () => ro.disconnect();
   }, []);
   useEffect(() => {
+    saved.current = 0;
     if (ref.current) ref.current.scrollLeft = 0;
     measure();
   }, [resetKey]);
@@ -63,6 +72,22 @@ export function Library({ museum: m, selectedId, bigAudio, busy, readOnly, rando
   const audio = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
   const [over, setOver] = useState<Section | null>(null);
+  const [tab, setTab] = useState<Section>(() => {
+    try {
+      return parseTab(localStorage.getItem(TAB_STORAGE_KEY));
+    } catch {
+      return 'image';
+    }
+  });
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const chooseTab = (t: Section) => {
+    setTab(t);
+    try {
+      localStorage.setItem(TAB_STORAGE_KEY, t);
+    } catch {
+      /* storage unavailable: the tab just is not remembered */
+    }
+  };
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<HungFilter>('all');
   const hung = useMemo(() => hungIds(m), [m.works]);
@@ -74,6 +99,12 @@ export function Library({ museum: m, selectedId, bigAudio, busy, readOnly, rando
   }), [m.media]);
 
   useEffect(() => () => audio.current?.pause(), []);
+
+  // A texture or audio item selected from elsewhere brings its tab to the front.
+  useEffect(() => {
+    const kind = selectedId ? m.media.find((x) => x.id === selectedId)?.kind : undefined;
+    if (kind && kind !== tab) chooseTab(kind);
+  }, [selectedId]);
 
   const toggle = (id: string, file: string) => {
     if (playing === id) {
@@ -152,10 +183,44 @@ export function Library({ museum: m, selectedId, bigAudio, busy, readOnly, rando
 
   return (
     <div className="library">
+      <div className="lib-tabs" role="tablist" aria-label="Media library">
+        {SECTIONS.map((sec) => {
+          const n = sec.section === 'image' ? counts.total : others[sec.section].length;
+          return (
+            <button
+              key={sec.section}
+              id={`lib-tab-${sec.section}`}
+              ref={(el) => { tabRefs.current[sec.section] = el; }}
+              role="tab"
+              aria-selected={tab === sec.section}
+              aria-controls={`lib-panel-${sec.section}`}
+              tabIndex={tab === sec.section ? 0 : -1}
+              className={'lib-tab' + (tab === sec.section ? ' active' : '')}
+              onClick={() => chooseTab(sec.section)}
+              onKeyDown={(e) => {
+                const next = tabForKey(sec.section, e.key);
+                if (!next) return;
+                e.preventDefault();
+                chooseTab(next);
+                tabRefs.current[next]?.focus();
+              }}
+            >
+              {sec.title} <span className="lib-tab-count">{n}</span>
+            </button>
+          );
+        })}
+      </div>
       {SECTIONS.map((sec) => (
-        <div key={sec.section} className={'lib-section' + (over === sec.section ? ' over' : '')} style={{ flex: sec.flex }} {...drop(sec.section)}>
+        <div
+          key={sec.section}
+          id={`lib-panel-${sec.section}`}
+          role="tabpanel"
+          aria-labelledby={`lib-tab-${sec.section}`}
+          hidden={tab !== sec.section}
+          className={'lib-section' + (over === sec.section ? ' over' : '')}
+          {...drop(sec.section)}
+        >
           <div className="library-head">
-            <h3>{sec.title}</h3>
             <label className={'btn small' + (readOnly ? ' disabled' : '')}>
               Add…
               <input

@@ -123,9 +123,15 @@ summary h3 { display: inline; }
 .warnings li { padding-left: 14px; position: relative; }
 .warnings li::before { content: '!'; position: absolute; left: 0; color: var(--warn); font-weight: 700; }
 
-.library { grid-area: lib; background: var(--panel); border-top: 1px solid var(--line); display: flex; flex-direction: row; min-width: 0; min-height: 0; }
-.lib-section { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--line); }
-.lib-section:last-child { border-right: 0; }
+.library { grid-area: lib; background: var(--panel); border-top: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.lib-section { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.lib-section[hidden] { display: none; }
+.lib-tabs { display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--line); flex: none; }
+.lib-tab { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 5px 12px; color: var(--muted); font-weight: 500; }
+.lib-tab:hover { color: inherit; }
+.lib-tab.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--accent-soft); }
+.lib-tab-count { font-weight: 400; opacity: 0.8; margin-left: 2px; }
+.lib-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .lib-section.over { background: var(--accent-soft); outline: 2px dashed var(--accent); outline-offset: -3px; }
 .small { padding: 2px 8px; font-size: 12px; }
 label.btn.disabled { opacity: 0.45; cursor: default; }

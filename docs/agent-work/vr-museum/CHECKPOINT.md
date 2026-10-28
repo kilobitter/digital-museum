@@ -2,7 +2,7 @@
 
 Goal and scope: minimalist WebXR museum (Quest) + desktop blueprint editor; see SPEC.md.
 Spec / plan: docs/agent-work/vr-museum/SPEC.md, briefs/T1.md, briefs/T2.md, briefs/T3.md, briefs/T4.md (ready, dispatch after T3 accepted)
-Workspace and baseline: /Users/ghijs/development/Digital museum, T1 0b933bc, T2 d127856, T3 66d7ec7, T4 (next commit)
+Workspace and baseline: /Users/ghijs/development/Digital museum, T1 0b933bc, T2 d127856, T3 66d7ec7, T4 d788ba9, T5 library tabs (next commit)
 Routing: root Opus; builder Sonnet (user confirmed via /tasks, 2026-10-27)
 
 ## Accepted work and fixed contracts
