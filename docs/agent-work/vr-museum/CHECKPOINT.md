@@ -6,6 +6,7 @@ Workspace and baseline: /Users/ghijs/development/Digital museum, T1 0b933bc, T2 
 Routing: root Opus; builder Sonnet (user confirmed via /tasks, 2026-10-27)
 
 ## Accepted work and fixed contracts
+- T10 accepted (0 corrections): multiSelect.ts (box/shift/Ctrl+A, move, rotate [ ], duplicate, delete, batch wall finish, Include areas toggle), doorway.ts + Door tool (D). UI unverified in browser.
 - T9 accepted (0 corrections; 2 small Opus fixes: upload URL from disk-backed file, 'Choose another folder' on invalid screen): hosted editor.html with File System Access folder store, MuseumStore abstraction, ?source=folder viewer preview, shared mediaFiles.ts. Browser behaviour unverified.
 - Collaboration track (user-approved 2026-10-28): T9 hosted editor (done) -> T10 multi-select + group move/nudge/rotate 90/delete/duplicate/batch wall finish + Door tool -> T11 import (folder or .zip, re-id, keep their look, place right of host, select imported) + export .zip, no new deps, one-time copy.
 - src/shared/museum.ts (data contract, orchestrator-owned)
