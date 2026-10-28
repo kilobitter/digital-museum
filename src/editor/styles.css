@@ -187,3 +187,12 @@ body.lib-resizing * { cursor: row-resize !important; }
 
 .sky-strip { height: 14px; border-radius: 4px; border: 1px solid var(--line); margin: 2px 0 6px; }
 .seg { display: flex; gap: 4px; margin: 2px 0 6px; }
+
+.store-label { max-width: 24ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.banner.conflict { display: flex; align-items: center; gap: 8px; }
+.banner .grow { flex: 1; }
+.start { max-width: 520px; }
+.start-choice { margin: 18px 0; }
+.start-choice button { font-size: 16px; padding: 10px 18px; }
+.start-error { color: #a32020; font-weight: 600; }
+.start .hint { font-size: 13px; }

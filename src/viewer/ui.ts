@@ -22,6 +22,18 @@ export function showLoading(text: string): void {
   el('p', text, p);
 }
 
+/** Asks the visitor to click before the browser's folder-access prompt can be shown. */
+export function showAllowAccess(folderName: string, onClick: () => void): void {
+  const p = reset();
+  el('h1', 'Allow access to your folder', p);
+  el('p', 'Your browser needs your permission to read the museum from your computer. Nothing is uploaded.', p);
+  const btns = el('div', undefined, p);
+  btns.className = 'btns';
+  const b = el('button', `Allow access to ${folderName}`, btns);
+  b.className = 'primary';
+  b.onclick = onClick;
+}
+
 export function showError(title: string, details: string[] = []): void {
   const p = reset('error');
   el('h1', title, p);

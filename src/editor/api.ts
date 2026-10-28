@@ -1,12 +1,8 @@
 import type { Museum } from '../shared/museum';
 import { parseMuseum, defaultMuseum } from '../shared/validate';
+import type { LoadResult, SaveOutcome } from './store';
 
 const HEADERS = { 'X-Museum-Editor': '1' };
-
-export type LoadResult =
-  | { status: 'ok'; museum: Museum }
-  | { status: 'missing'; museum: Museum }
-  | { status: 'invalid'; errors: string[] };
 
 export async function loadMuseum(): Promise<LoadResult> {
   let res: Response;
@@ -27,8 +23,6 @@ export async function loadMuseum(): Promise<LoadResult> {
   const parsed = parseMuseum(json);
   return parsed.ok ? { status: 'ok', museum: parsed.museum } : { status: 'invalid', errors: parsed.errors };
 }
-
-export type SaveOutcome = { ok: true } | { ok: false; errors: string[] };
 
 /** Validates locally first; nothing is sent when invalid. */
 export async function saveMuseum(museum: Museum): Promise<SaveOutcome> {

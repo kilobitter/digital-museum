@@ -6,6 +6,8 @@ Workspace and baseline: /Users/ghijs/development/Digital museum, T1 0b933bc, T2 
 Routing: root Opus; builder Sonnet (user confirmed via /tasks, 2026-10-27)
 
 ## Accepted work and fixed contracts
+- T9 accepted (0 corrections; 2 small Opus fixes: upload URL from disk-backed file, 'Choose another folder' on invalid screen): hosted editor.html with File System Access folder store, MuseumStore abstraction, ?source=folder viewer preview, shared mediaFiles.ts. Browser behaviour unverified.
+- Collaboration track (user-approved 2026-10-28): T9 hosted editor (done) -> T10 multi-select + group move/nudge/rotate 90/delete/duplicate/batch wall finish + Door tool -> T11 import (folder or .zip, re-id, keep their look, place right of host, select imported) + export .zip, no new deps, one-time copy.
 - src/shared/museum.ts (data contract, orchestrator-owned)
 - T1 accepted (1 correction) and committed 0b933bc: viewer, shared logic (validate/geometry/zones), sample museum. Not yet seen in a headset.
 - T8 accepted: museum.ts v4 (Sky gradient/panorama, 'panorama' media, Area.openSky), sky sphere, ceiling decomposition (no ceiling offsets), Panoramas tab, sky settings.

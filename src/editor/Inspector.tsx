@@ -13,6 +13,7 @@ import type { Selection } from './types';
 
 interface Props {
   museum: Museum;
+  mediaUrl(file: string): string | undefined;
   selection: Selection;
   /** Painting selected in the library; shown when nothing is selected on the blueprint. */
   selectedMediaId: string | null;
@@ -106,7 +107,7 @@ function FillWallPanel({ museum: m, wall, onChange }: { museum: Museum; wall: Wa
   );
 }
 
-export function Inspector({ museum: m, selection, selectedMediaId, onChange, onDeleted }: Props) {
+export function Inspector({ museum: m, mediaUrl, selection, selectedMediaId, onChange, onDeleted }: Props) {
   const del = (fn: (m: Museum) => Museum) => (
     <button
       className="danger"
@@ -163,7 +164,7 @@ export function Inspector({ museum: m, selection, selectedMediaId, onChange, onD
     return (
       <section className="panel">
         <h3>Work <span className="muted">{imageHeight(m, w).toFixed(2)} m tall</span></h3>
-        {media && <img className="inspector-thumb" src={`./museum/${media.file}`} alt="" />}
+        {media && <img className="inspector-thumb" src={mediaUrl(media.file)} alt="" />}
         <Field label="Painting">
           <select value={w.mediaId} onChange={(e) => onChange(updateWork(m, w.id, { mediaId: e.target.value }))}>
             {images.map((i) => <option key={i.id} value={i.id}>{title(i)}</option>)}
@@ -329,7 +330,7 @@ export function Inspector({ museum: m, selection, selectedMediaId, onChange, onD
     return (
       <section className="panel">
         <h3>Painting <span className="muted">{media.width}×{media.height} px</span></h3>
-        <img className="inspector-thumb" src={`./museum/${media.file}`} alt="" />
+        <img className="inspector-thumb" src={mediaUrl(media.file)} alt="" />
         <LabelFields museum={m} media={media} onChange={onChange} />
         <p className="hint">Hung {n}×. Labels belong to the painting and show wherever it hangs.</p>
       </section>

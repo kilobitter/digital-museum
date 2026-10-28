@@ -9,10 +9,11 @@ export type Section = 'image' | 'texture' | 'panorama' | 'audio';
 
 interface Props {
   museum: Museum;
+  mediaUrl(file: string): string | undefined;
   selectedId: string | null;
   bigAudio: ReadonlySet<string>;
   busy: string | null;
-  /** Uploads are disabled (editor not opened from this computer). */
+  /** Uploads and deletes are disabled. */
   readOnly: boolean;
   randomHang: boolean;
   onSelect(id: string | null): void;
@@ -118,7 +119,7 @@ function VirtualList({ count, render, resetKey }: { count: number; render: (i: n
   );
 }
 
-export function Library({ museum: m, selectedId, bigAudio, busy, readOnly, randomHang, onSelect, onFiles, onDelete, onToggleRandom }: Props) {
+export function Library({ museum: m, mediaUrl, selectedId, bigAudio, busy, readOnly, randomHang, onSelect, onFiles, onDelete, onToggleRandom }: Props) {
   const audio = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
   const [over, setOver] = useState<Section | null>(null);
@@ -164,7 +165,9 @@ export function Library({ museum: m, selectedId, bigAudio, busy, readOnly, rando
       return;
     }
     audio.current?.pause();
-    const a = new Audio(`./museum/${file}`);
+    const url = mediaUrl(file);
+    if (!url) return;
+    const a = new Audio(url);
     a.onended = () => setPlaying(null);
     a.onerror = () => setPlaying(null);
     audio.current = a;
@@ -182,7 +185,7 @@ export function Library({ museum: m, selectedId, bigAudio, busy, readOnly, rando
       <div key={it.id} className={'card' + (selectedId === it.id ? ' selected' : '')} onClick={() => onSelect(it.id === selectedId ? null : it.id)}>
         <div className="card-thumb">
           {it.kind !== 'audio' ? (
-            <img src={`./museum/${it.file}`} alt="" loading="lazy" decoding="async" draggable={false} />
+            <img src={mediaUrl(it.file)} alt="" loading="lazy" decoding="async" draggable={false} />
           ) : (
             <button
               className={'play' + (playing === it.id ? ' on' : '')}

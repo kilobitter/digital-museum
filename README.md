@@ -19,9 +19,9 @@ npm install
 npm run dev
 ```
 Then open **https://localhost:5317/editor.html** and accept the self-signed certificate warning.
-The editor only saves from this computer (the write API refuses other machines); if you open it from
-another address it shows a banner and disables saving and uploads. Port 5317 is fixed on purpose: if
-it is taken, the server stops instead of quietly picking another port.
+On `localhost` the dev server's own write API saves straight into `public/museum/` (it refuses other
+machines). Add `?folder` to the address to try the collaborator flow below instead. Port 5317 is fixed
+on purpose: if it is taken, the server stops instead of quietly picking another port.
 
 - The museum lives in `public/museum/museum.json`, its images and audio in `public/museum/media/`.
   The editor saves there automatically (and with Ctrl/Cmd+S).
@@ -79,6 +79,31 @@ it is taken, the server stops instead of quietly picking another port.
 
 The visitor view is `https://localhost:5317/` (the Preview button in the editor).
 
+## For collaborators
+You can build your own museum without installing anything. You need **Chrome or Edge on a laptop or
+desktop computer** (Safari, Firefox, phones and tablets do not work; in Brave, first enable
+`brave://flags/#file-system-access-api`).
+
+1. Open the editor link you were given (it ends in `/editor.html`).
+2. Make a new, empty folder on your computer, for example `My museum`.
+3. Click **Open museum folder** and pick that folder. The editor creates your museum there.
+4. Draw rooms, add paintings and sounds, and hang them. Everything saves into the folder by itself
+   (also with Ctrl/Cmd+S). Nothing is uploaded to the internet.
+
+Where your files live: `museum.json` (the plan) and a `media` folder (your images and audio) inside the
+folder you picked. **Keep that folder**: it is your museum. Next time, open the editor and click
+**Reopen "My museum"**, then allow access when the browser asks.
+
+- **Preview** (top right) opens your museum in the walkable viewer in a new tab. It reads your folder
+  directly, works on a computer only (not in a headset), and asks once to allow access.
+- **Sending it to someone**: zip the whole folder and send the zip. They can unzip it and open it in the
+  editor, or copy its contents into `public/museum/` of this project.
+- Use **one folder per museum**. Use **Switch folder** in the top bar to change museums.
+- Do not edit the same folder in two tabs, and do not edit `museum.json` by hand while the editor is
+  open. If the file changes behind the editor's back (another tab, a sync program such as Dropbox or
+  OneDrive, copying files in), saving pauses and you choose **Reload from folder** or **Overwrite**.
+- Only `museum.json` and the `media` folder inside your folder are ever touched.
+
 ## Previewing on a Quest
 Run `npm run dev` and open the **Network** URL it prints (for example `https://192.168.x.x:5317/`) in the
 Quest browser, on the same Wi-Fi. Accept the certificate warning, then press **Enter VR**. The editor is
@@ -117,10 +142,12 @@ into a folder of your choice (it refuses to write into `public/museum`). It incl
 3. Every push to `main` runs `.github/workflows/deploy.yml` (tests, build, deploy). The site appears at
    `https://<user>.github.io/<repo>/`. The build uses relative paths, so the sub-path works.
 
-The editor is not part of the published site; only the viewer and `public/museum/` are.
+The published site contains the viewer (`index.html`, showing `public/museum/`) and the editor
+(`editor.html`). On the published site the editor always uses the folder flow described under
+"For collaborators": it never writes to the site itself. The dev write API exists only in `npm run dev`.
 
 ## Scripts
 - `npm run dev`: dev server with the editor
 - `npm test`: unit tests
-- `npm run build`: type-check and build the static viewer into `dist/`
+- `npm run build`: type-check and build the static viewer and editor into `dist/`
 - `npm run preview`: serve `dist/` locally

@@ -7,11 +7,12 @@ import { DesktopControls } from './desktop';
 import { Player } from './player';
 import { buildMuseumScene } from './scene';
 import { PaintingStreamer } from './streamer';
-import { hideOverlay, setControlsHint, showError, showLoading, showStart, toast } from './ui';
+import { FolderSourceError, openFolderSource, wantsFolderSource } from './folderSource';
+import { hideOverlay, setControlsHint, showAllowAccess, showError, showLoading, showStart, toast } from './ui';
 import { XRLocomotion } from './xr';
 
 const MUSEUM_BASE = './museum/';
-const urlFor = (file: string) => MUSEUM_BASE + file;
+let urlFor = (file: string) => MUSEUM_BASE + file;
 
 async function fetchMuseum(): Promise<Museum> {
   let res: Response;
@@ -51,7 +52,26 @@ async function xrSupported(): Promise<boolean> {
 
 async function main(): Promise<void> {
   showLoading('Reading museum…');
-  const museum = await fetchMuseum();
+  let museum: Museum;
+  if (wantsFolderSource()) {
+    // Preview from the folder the editor opened (desktop browsers with the File System Access API).
+    const src = await openFolderSource(
+      (name, grant) =>
+        new Promise<void>((resolve) => {
+          showAllowAccess(name, () => {
+            // requestPermission has to start inside this click; the promise settles after the prompt
+            void grant().then(() => {
+              showLoading('Reading museum…');
+              resolve();
+            });
+          });
+        }),
+    );
+    museum = src.museum;
+    urlFor = src.urlFor;
+  } else {
+    museum = await fetchMuseum();
+  }
   document.title = museum.name;
 
   let renderer: THREE.WebGLRenderer;
@@ -185,6 +205,7 @@ async function main(): Promise<void> {
 
 main().catch((e) => {
   console.error(e);
-  if (e instanceof MuseumError) showError(e.title, e.details);
+  if (e instanceof FolderSourceError) showError(e.title, e.details);
+  else if (e instanceof MuseumError) showError(e.title, e.details);
   else showError('Something went wrong', [e instanceof Error ? e.message : String(e)]);
 });

@@ -20,6 +20,7 @@ export interface CanvasHandle {
 
 interface Props {
   museum: Museum;
+  mediaUrl(file: string): string | undefined;
   tool: Tool;
   layer: Layer;
   selection: Selection;
@@ -561,7 +562,7 @@ export function Canvas(p: Props) {
   for (const a of m.areas) {
     const f = areaFace(a);
     const media = f.textureId ? m.media.find((x) => x.id === f.textureId && x.kind === 'texture') : undefined;
-    if (media) patterns.set(`${f.textureId}|${f.tileSize}`, { id: `ap-${patterns.size}`, href: `./museum/${media.file}`, tile: f.tileSize });
+    if (media) patterns.set(`${f.textureId}|${f.tileSize}`, { id: `ap-${patterns.size}`, href: p.mediaUrl(media.file) ?? '', tile: f.tileSize });
   }
   const dim = layer === 'areas' ? 'layer-dim' : '';
 

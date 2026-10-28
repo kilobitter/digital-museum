@@ -10,6 +10,7 @@ import {
   type Work,
   type ZoneShape,
 } from './museum';
+import { MEDIA_FILE_RE } from './mediaFiles';
 
 export function defaultSky(): Sky {
   return { kind: 'gradient', top: '#8fb8de', horizon: '#eef2f5', bottom: '#d8d4cc' };
@@ -39,7 +40,6 @@ export function defaultMuseum(): Museum {
 }
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
-const FILE_RE = /^media\/[A-Za-z0-9_-]+\.(jpg|jpeg|png|webp|mp3|m4a|aac|ogg|wav)$/;
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -179,7 +179,7 @@ export function parseMuseum(
           ),
           'image' as const);
     const file = str(raw, 'file', p);
-    if (typeof raw.file === 'string' && !FILE_RE.test(raw.file))
+    if (typeof raw.file === 'string' && !MEDIA_FILE_RE.test(raw.file))
       err(`${p}.file`, `invalid path '${raw.file}' (expected media/<name>.<jpg|jpeg|png|webp|mp3|m4a|aac|ogg|wav>)`);
     const m: MediaItem = { id, kind, file, name: typeof raw.name === 'string' ? raw.name : (err(`${p}.name`, 'expected a string'), '') };
     if (kind === 'image' || kind === 'texture' || kind === 'panorama') {

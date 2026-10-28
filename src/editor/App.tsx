@@ -2,12 +2,11 @@ import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { Museum } from '../shared/museum';
 import { defaultMuseum, parseMuseum } from '../shared/validate';
-import { deleteMediaFile, loadMuseum, saveMuseum, uploadMedia } from './api';
+import type { MuseumStore } from './store';
 import { Canvas, type CanvasHandle } from './Canvas';
 import { Inspector, SettingsPanel } from './Inspector';
 import { Library, type Section } from './Library';
 import { LibraryResizer, useLibraryHeight } from './LibraryResizer';
-import { isLoopbackHost, localEditorUrl } from './host';
 import { AUDIO_WARN_BYTES, MAX_PANORAMA_SIDE, MAX_TEXTURE_SIDE, PANORAMA_JPEG_QUALITY, isRoughlyEquirect, mediaKindOf, parsePaintingFilename, prepareImage } from './media';
 import { isDuplicate, runPool, summarizeUpload } from './uploadQueue';
 import {
@@ -64,12 +63,18 @@ const isField = (t: EventTarget | null) => t instanceof HTMLElement && /^(INPUT|
 
 type Boot = { phase: 'loading' } | { phase: 'invalid'; errors: string[] } | { phase: 'ready'; missing: boolean };
 
-export function App() {
+export interface EditorProps {
+  store: MuseumStore;
+  /** Present for the folder flow: returns to the start screen (after the editor has flushed its save). */
+  onSwitchFolder?: () => void;
+}
+
+export function App({ store, onSwitchFolder }: EditorProps) {
   const [boot, setBoot] = useState<Boot>({ phase: 'loading' });
   const lib = useLibraryHeight();
   const [hist, dispatch] = useReducer(reducer, undefined, () => createHistory(defaultMuseum()));
   const [saved, setSaved] = useState<Museum | null>(null);
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'error' | 'conflict'>('idle');
   const [saveErrors, setSaveErrors] = useState<string[]>([]);
   const [showErrors, setShowErrors] = useState(false);
   const [tool, setTool] = useState<Tool>('select');
@@ -82,9 +87,7 @@ export function App() {
   const [interacting, setInteracting] = useState(false);
   const [dropping, setDropping] = useState(false);
   const [randomHang, setRandomHang] = useState(false);
-  // The dev write API only accepts loopback requests; elsewhere the editor is view-only.
-  const local = isLoopbackHost(window.location.hostname);
-  const localRef = useRef(local);
+  const writable = store.writable;
   const canvas = useRef<CanvasHandle>(null);
 
   const museum = hist.present;
@@ -96,18 +99,24 @@ export function App() {
   const savedRef = useRef<Museum | null>(null);
   savedRef.current = saved;
   const savingRef = useRef(false);
+  const saveStateRef = useRef(saveState);
+  saveStateRef.current = saveState;
   const dirty = museum !== saved;
 
   // ----- loading -----
   const load = useCallback(async () => {
     setBoot({ phase: 'loading' });
-    const r = await loadMuseum();
+    const r = await store.load();
+    setSaveState('idle');
+    setSaveErrors([]);
+    setShowErrors(false);
     if (r.status === 'invalid') return setBoot({ phase: 'invalid', errors: r.errors });
     dispatch({ type: 'reset', museum: r.museum });
     setSaved(r.status === 'ok' ? r.museum : null);
     setBoot({ phase: 'ready', missing: r.status === 'missing' });
-  }, []);
+  }, [store]);
   useEffect(() => void load(), [load]);
+  useEffect(() => () => store.dispose(), [store]);
 
   // ----- notices -----
   const notify = useCallback((msg: string) => setNotice(msg), []);
@@ -118,19 +127,20 @@ export function App() {
   }, [notice]);
 
   // ----- saving -----
-  const saveNow = useCallback(async () => {
-    if (savingRef.current || !localRef.current) return;
+  /** Resolves true when everything is saved. `overwrite` skips the external-change guard (folder store). */
+  const saveNow = useCallback(async (overwrite = false): Promise<boolean> => {
+    if (savingRef.current || !writable) return false;
     const snap = presentRef.current;
     const parsed = parseMuseum(snap);
     if (!parsed.ok) {
       setSaveErrors(parsed.errors);
       setSaveState('error');
       setShowErrors(true);
-      return;
+      return false;
     }
     savingRef.current = true;
     setSaveState('saving');
-    const r = await saveMuseum(snap);
+    const r = await store.save(snap, { overwrite });
     savingRef.current = false;
     if (r.ok) {
       setSaved(snap);
@@ -138,21 +148,22 @@ export function App() {
       setSaveErrors([]);
       setShowErrors(false);
       setSaveState('idle');
-      if (presentRef.current !== snap) void saveNow(); // edited while saving
-    } else {
-      setSaveErrors(r.errors);
-      setSaveState('error');
-      setShowErrors(true);
+      if (presentRef.current !== snap) return saveNow(); // edited while saving
+      return true;
     }
-  }, []);
+    setSaveErrors(r.errors);
+    setSaveState(r.conflict ? 'conflict' : 'error');
+    setShowErrors(true);
+    return false;
+  }, [store, writable]);
 
   useEffect(() => {
-    if (!local) return;
+    if (!writable || saveState === 'conflict') return; // autosave pauses until the conflict is resolved
     if (!shouldScheduleAutosave({ ready: boot.phase === 'ready', interacting, present: museum, saved: savedRef.current })) return;
     const t = setTimeout(() => void saveNow(), 2000);
     return () => clearTimeout(t);
     // re-runs when a gesture ends (interacting -> false), which reschedules the save
-  }, [museum, interacting, boot.phase, saveNow, local]);
+  }, [museum, interacting, boot.phase, saveNow, writable, saveState]);
 
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
@@ -197,7 +208,7 @@ export function App() {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        void saveNow();
+        if (saveStateRef.current !== 'conflict') void saveNow();
         return;
       }
       if (isField(e.target)) return;
@@ -252,7 +263,7 @@ export function App() {
 
   const addFiles = useCallback(
     async (files: File[], section: Section) => {
-      if (!localRef.current) return;
+      if (!writable) return;
       const failures: string[] = [];
       const skipped: string[] = [];
       const queue: { file: File; kind: Section }[] = [];
@@ -288,7 +299,7 @@ export function App() {
                 : await prepareImage(f, kind === 'texture' ? MAX_TEXTURE_SIDE : undefined);
             if (kind === 'panorama' && !isRoughlyEquirect(img.width, img.height))
               aspectNotes.push(`${f.name} is ${img.width}×${img.height}: a sky panorama should be about 2:1 (equirectangular) or it will look stretched`);
-            const file = await uploadMedia(f.name.replace(/\.[^.]+$/, '') + '.jpg', img.blob);
+            const file = await store.upload(f.name.replace(/\.[^.]+$/, '') + '.jpg', img.blob);
             item = { kind, file, name: f.name, width: img.width, height: img.height };
             if (kind === 'image') {
               const { title, artist } = parsePaintingFilename(f.name);
@@ -296,7 +307,7 @@ export function App() {
               if (artist) item.artist = artist;
             }
           } else {
-            const file = await uploadMedia(f.name, f);
+            const file = await store.upload(f.name, f);
             item = { kind, file, name: f.name };
           }
           sizes[item.file] = f.size;
@@ -323,17 +334,17 @@ export function App() {
       setBusy(null);
       if (files.length) notify([summarizeUpload(added, skipped, failures), ...aspectNotes].join(' '));
     },
-    [notify],
+    [notify, store, writable],
   );
 
   const deleteMedia = useCallback(
     async (id: string) => {
       const item = museum.media.find((x) => x.id === id);
       if (!item) return;
-      if (!localRef.current) return;
+      if (!writable) return;
       if (removeMedia(museum, id) === null) return notify('This file is still used by a work, zone, wall/floor/ceiling finish or area.');
       try {
-        await deleteMediaFile(item.file);
+        await store.deleteMedia(item.file);
       } catch (e) {
         return notify(e instanceof Error ? e.message : String(e));
       }
@@ -341,7 +352,7 @@ export function App() {
       if (selectedMediaId === id) setSelectedMediaId(null);
       notify('File deleted. Undo history was cleared.');
     },
-    [museum, selectedMediaId, notify],
+    [museum, selectedMediaId, notify, store, writable],
   );
 
   const selectMedia = (id: string | null) => {
@@ -359,6 +370,24 @@ export function App() {
     setTool('work');
   };
 
+  // ----- external change / switching folders -----
+  const reloadFromFolder = async () => {
+    if (presentRef.current !== savedRef.current && !window.confirm('Reload from the folder? Your changes in this tab that are not in the folder will be lost.')) return;
+    await load();
+  };
+  const overwriteFolder = async () => {
+    if (!window.confirm('Overwrite the museum file in the folder with what you see here? The other changes will be lost.')) return;
+    await saveNow(true);
+  };
+  const switchFolder = async () => {
+    while (savingRef.current) await new Promise((r) => setTimeout(r, 50));
+    if (presentRef.current !== savedRef.current) {
+      const ok = await saveNow();
+      if (!ok && !window.confirm('Your latest changes could not be saved. Switch folder anyway and lose them?')) return;
+    }
+    onSwitchFolder?.();
+  };
+
   const warnings = computeWarnings(museum);
 
   if (boot.phase === 'loading') return <div className="boot">Loading…</div>;
@@ -371,6 +400,7 @@ export function App() {
           <ul className="errors">{boot.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
           <div className="row">
             <button onClick={() => void load()}>Reload</button>
+            {onSwitchFolder && <button onClick={onSwitchFolder}>Choose another folder</button>}
             <button
               className="danger"
               onClick={() => {
@@ -388,6 +418,7 @@ export function App() {
 
   const status =
     saveState === 'saving' ? { cls: 'saving', text: 'Saving…' }
+    : saveState === 'conflict' ? { cls: 'error', text: 'Paused: folder changed' }
     : saveState === 'error' ? { cls: 'error', text: 'Save failed' }
     : dirty ? { cls: 'dirty', text: saved === null ? 'Not saved yet' : 'Unsaved changes' }
     : { cls: 'saved', text: 'Saved' };
@@ -415,6 +446,8 @@ export function App() {
     >
       <header className="topbar">
         <strong className="title">{museum.name || 'Untitled'}</strong>
+        <span className="muted store-label" title={store.kind === 'folder' ? 'Folder on this computer' : 'Local development server'}>{store.label}</span>
+        {onSwitchFolder && <button onClick={() => void switchFolder()} title="Save, then choose another museum folder">Switch folder</button>}
         <span className="sep" />
         <button disabled={!canUndo(hist)} onClick={() => dispatch({ type: 'undo' })} title="Undo (Ctrl/Cmd+Z)">Undo</button>
         <button disabled={!canRedo(hist)} onClick={() => dispatch({ type: 'redo' })} title="Redo (Shift+Ctrl/Cmd+Z)">Redo</button>
@@ -422,21 +455,23 @@ export function App() {
         <button className={'status ' + status.cls} onClick={() => saveState === 'error' && setShowErrors((v) => !v)} title={saveState === 'error' ? 'Show errors' : ''}>
           <i /> {status.text}
         </button>
-        <button className="primary" onClick={() => void saveNow()} disabled={saveState === 'saving' || !local} title="Ctrl/Cmd+S">Save</button>
-        <a className="btn" href="./index.html" target="_blank" rel="noreferrer">Preview ↗</a>
+        <button className="primary" onClick={() => void saveNow()} disabled={saveState === 'saving' || saveState === 'conflict' || !writable} title="Ctrl/Cmd+S">Save</button>
+        <a className="btn" href={store.previewUrl} target="_blank" rel="noreferrer">Preview ↗</a>
       </header>
 
-      {showErrors && saveErrors.length > 0 && (
+      {showErrors && saveState !== 'conflict' && saveErrors.length > 0 && (
         <div className="error-panel">
           <div className="row"><strong>{saveState === 'error' ? 'Not saved' : 'Errors'}</strong><span className="grow" /><button onClick={() => setShowErrors(false)}>Close</button></div>
           <ul className="errors">{saveErrors.map((e, i) => <li key={i}>{e}</li>)}</ul>
         </div>
       )}
 
-      {!local && (
-        <div className="banner">
-          Saving only works from this computer: open{' '}
-          <a href={localEditorUrl(window.location.port)}>{localEditorUrl(window.location.port)}</a>. Save and uploads are disabled here.
+      {saveState === 'conflict' && (
+        <div className="banner conflict">
+          <strong>The museum file in this folder was changed by something else.</strong> Saving is paused so nothing is lost.
+          <span className="grow" />
+          <button onClick={() => void reloadFromFolder()}>Reload from folder</button>
+          <button className="danger" onClick={() => void overwriteFolder()}>Overwrite</button>
         </div>
       )}
 
@@ -461,6 +496,7 @@ export function App() {
         <Canvas
           handleRef={canvas}
           museum={museum}
+          mediaUrl={store.mediaUrl}
           tool={tool}
           layer={layer}
           selection={sel}
@@ -480,7 +516,7 @@ export function App() {
       </main>
 
       <aside className="sidebar">
-        <Inspector museum={museum} selection={sel} selectedMediaId={selectedMediaId} onChange={change} onDeleted={() => setSelection(null)} />
+        <Inspector museum={museum} mediaUrl={store.mediaUrl} selection={sel} selectedMediaId={selectedMediaId} onChange={change} onDeleted={() => setSelection(null)} />
         <SettingsPanel museum={museum} onChange={change} />
         <section className="panel">
           <h3>Warnings {warnings.length > 0 && <span className="badge">{warnings.length}</span>}</h3>
@@ -513,7 +549,7 @@ export function App() {
       </aside>
 
       <LibraryResizer height={lib.height} max={lib.max} onChange={lib.set} onToggle={lib.toggle} />
-      <Library museum={museum} selectedId={selectedMediaId} bigAudio={bigAudio} busy={busy} readOnly={!local} randomHang={randomHang} onSelect={selectMedia} onFiles={(f, s) => void addFiles(f, s)} onDelete={(id) => void deleteMedia(id)} onToggleRandom={toggleRandom} />
+      <Library museum={museum} mediaUrl={store.mediaUrl} selectedId={selectedMediaId} bigAudio={bigAudio} busy={busy} readOnly={!writable} randomHang={randomHang} onSelect={selectMedia} onFiles={(f, s) => void addFiles(f, s)} onDelete={(id) => void deleteMedia(id)} onToggleRandom={toggleRandom} />
     </div>
   );
 }

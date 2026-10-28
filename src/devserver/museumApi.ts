@@ -8,9 +8,8 @@ import type { Plugin } from 'vite';
 import { parseMuseum } from '../shared/validate';
 
 export const MAX_MUSEUM_BYTES = 5 * 1024 * 1024;
-export const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
-export const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'mp3', 'm4a', 'aac', 'ogg', 'wav'] as const;
-export const MEDIA_FILE_RE = /^media\/[A-Za-z0-9_-]+\.(jpg|jpeg|png|webp|mp3|m4a|aac|ogg|wav)$/;
+import { ALLOWED_EXTENSIONS, MAX_MEDIA_BYTES, MEDIA_FILE_RE } from '../shared/mediaFiles';
+export { ALLOWED_EXTENSIONS, MAX_MEDIA_BYTES, MEDIA_FILE_RE };
 
 // ---------- pure helpers ----------
 
