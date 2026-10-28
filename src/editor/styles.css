@@ -47,7 +47,7 @@ h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06
 .app {
   height: 100%; display: grid; position: relative;
   grid-template-columns: 64px minmax(0, 1fr) 320px;
-  grid-template-rows: 44px auto minmax(0, 1fr) 176px;
+  grid-template-rows: 44px auto minmax(0, 1fr) var(--lib-h, 176px);
   grid-template-areas: 'top top top' 'banner banner banner' 'tools main side' 'tools lib side';
 }
 .topbar { grid-area: top; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
@@ -144,7 +144,16 @@ button.active { background: var(--accent-soft); border-color: var(--accent); col
 .subhead { margin: 6px 0; }
 .wall.custom { stroke: #7a4fb5; }
 .library-head { display: flex; align-items: center; gap: 10px; padding: 6px 12px; }
+.lib-resizer { grid-area: lib; align-self: start; height: 7px; margin-top: -3px; position: relative; z-index: 4; cursor: row-resize; touch-action: none; user-select: none; outline: none; }
+.lib-resizer::after { content: ''; position: absolute; left: 0; right: 0; top: 3px; height: 1px; background: transparent; transition: background 0.12s, height 0.12s, top 0.12s; }
+.lib-resizer:hover::after, .lib-resizer:focus-visible::after { background: var(--accent); top: 2px; height: 3px; opacity: 0.55; }
+.lib-resizer.active::after { background: var(--accent); top: 2px; height: 3px; opacity: 1; }
+body.lib-resizing { user-select: none; cursor: row-resize; }
+body.lib-resizing * { cursor: row-resize !important; }
 .library-items { flex: 1; display: flex; gap: 8px; overflow-x: auto; padding: 0 12px 10px; min-height: 0; align-items: stretch; }
+.library-items.grid { display: block; overflow-x: hidden; overflow-y: auto; }
+.card-grid { display: grid; gap: 8px; align-content: start; }
+.card-grid .card { height: 132px; flex: none; overflow: hidden; }
 .empty { color: var(--muted); align-self: center; }
 .card { flex: 0 0 150px; border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; background: #fff; min-width: 0; }
 .card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }

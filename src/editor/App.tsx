@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { Museum } from '../shared/museum';
 import { defaultMuseum, parseMuseum } from '../shared/validate';
@@ -5,6 +6,7 @@ import { deleteMediaFile, loadMuseum, saveMuseum, uploadMedia } from './api';
 import { Canvas, type CanvasHandle } from './Canvas';
 import { Inspector, SettingsPanel } from './Inspector';
 import { Library, type Section } from './Library';
+import { LibraryResizer, useLibraryHeight } from './LibraryResizer';
 import { isLoopbackHost, localEditorUrl } from './host';
 import { AUDIO_WARN_BYTES, MAX_TEXTURE_SIDE, mediaKindOf, parsePaintingFilename, prepareImage } from './media';
 import { isDuplicate, runPool, summarizeUpload } from './uploadQueue';
@@ -63,6 +65,7 @@ type Boot = { phase: 'loading' } | { phase: 'invalid'; errors: string[] } | { ph
 
 export function App() {
   const [boot, setBoot] = useState<Boot>({ phase: 'loading' });
+  const lib = useLibraryHeight();
   const [hist, dispatch] = useReducer(reducer, undefined, () => createHistory(defaultMuseum()));
   const [saved, setSaved] = useState<Museum | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'error'>('idle');
@@ -351,6 +354,7 @@ export function App() {
   return (
     <div
       className={'app' + (dropping ? ' dropping' : '')}
+      style={{ '--lib-h': `${lib.height}px` } as CSSProperties}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('Files')) {
           e.preventDefault();
@@ -449,6 +453,7 @@ export function App() {
         </section>
       </aside>
 
+      <LibraryResizer height={lib.height} max={lib.max} onChange={lib.set} onToggle={lib.toggle} />
       <Library museum={museum} selectedId={selectedMediaId} bigAudio={bigAudio} busy={busy} readOnly={!local} randomHang={randomHang} onSelect={selectMedia} onFiles={(f, s) => void addFiles(f, s)} onDelete={(id) => void deleteMedia(id)} onToggleRandom={toggleRandom} />
     </div>
   );

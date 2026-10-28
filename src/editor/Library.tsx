@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } 
 import type { MediaItem, Museum } from '../shared/museum';
 import { countLabel, filterPaintings, hungIds, paintingCounts, visibleWindow, type HungFilter } from './libraryFilter';
 import { mediaUsage } from './model';
+import { gridColumns, gridWindow, shouldUseGrid } from './libraryLayout';
 import { TAB_STORAGE_KEY, parseTab, tabForKey } from './libraryTabs';
 
 export type Section = 'image' | 'texture' | 'audio';
@@ -27,21 +28,42 @@ const SECTIONS: { section: Section; title: string; accept: string; empty: string
 ];
 
 const CARD_STEP = 158; // card width 150 + gap 8 (see styles.css .card)
+const ROW_STEP = 140; // grid card height 132 + gap 8 (see styles.css .card-grid .card)
 
-/** Horizontal strip that only mounts the cards in (or near) view, so hundreds of items stay cheap. */
-function VirtualRow({ count, render, resetKey }: { count: number; render: (i: number) => ReactNode; resetKey: string }) {
+/**
+ * Scroller that only mounts the cards in (or near) view, so hundreds of items stay cheap.
+ * Short panel: one horizontally scrolling row. Taller panel: a vertically scrolling grid that fills the width.
+ */
+function VirtualList({ count, render, resetKey }: { count: number; render: (i: number) => ReactNode; resetKey: string }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [view, setView] = useState({ left: 0, width: 1200 });
-  const saved = useRef(0); // scroll offset to restore when a hidden tab becomes visible again
-  const lastWidth = useRef(0);
+  const [view, setView] = useState({ left: 0, top: 0, width: 1200, height: 120 });
+  const saved = useRef({ left: 0, top: 0 }); // scroll offsets to restore when a hidden tab becomes visible again
+  const lastSize = useRef(0);
+  const lastGrid = useRef<boolean | null>(null);
   const measure = () => {
     const el = ref.current;
-    if (el && el.clientWidth > 0) {
-      if (lastWidth.current === 0 && saved.current > 0) el.scrollLeft = saved.current;
-      else saved.current = el.scrollLeft;
+    if (!el) return;
+    if (el.clientWidth === 0) {
+      lastSize.current = 0; // hidden tab: keep the rendered window so the saved offset can be restored on return
+      return;
     }
-    if (el) lastWidth.current = el.clientWidth;
-    if (el) setView((v) => (v.left === el.scrollLeft && v.width === el.clientWidth ? v : { left: el.scrollLeft, width: el.clientWidth }));
+    const grid = shouldUseGrid(el.clientHeight, ROW_STEP);
+    if (el.clientWidth > 0) {
+      if (lastGrid.current !== null && lastGrid.current !== grid) {
+        saved.current = { left: 0, top: 0 }; // the scroll axis changed
+        el.scrollLeft = 0;
+        el.scrollTop = 0;
+      } else if (lastSize.current === 0 && (saved.current.left > 0 || saved.current.top > 0)) {
+        el.scrollLeft = saved.current.left;
+        el.scrollTop = saved.current.top;
+      } else {
+        saved.current = { left: el.scrollLeft, top: el.scrollTop };
+      }
+      lastGrid.current = grid;
+    }
+    lastSize.current = el.clientWidth;
+    const next = { left: el.scrollLeft, top: el.scrollTop, width: el.clientWidth, height: el.clientHeight };
+    setView((v) => (v.left === next.left && v.top === next.top && v.width === next.width && v.height === next.height ? v : next));
   };
   useEffect(() => {
     const el = ref.current;
@@ -52,10 +74,37 @@ function VirtualRow({ count, render, resetKey }: { count: number; render: (i: nu
     return () => ro.disconnect();
   }, []);
   useEffect(() => {
-    saved.current = 0;
-    if (ref.current) ref.current.scrollLeft = 0;
+    saved.current = { left: 0, top: 0 };
+    if (ref.current) {
+      ref.current.scrollLeft = 0;
+      ref.current.scrollTop = 0;
+    }
     measure();
   }, [resetKey]);
+
+  const grid = shouldUseGrid(view.height, ROW_STEP);
+  if (grid) {
+    const cols = gridColumns(Math.max(0, view.width - 24), CARD_STEP); // 12px padding each side
+    const [start, end] = gridWindow(view.top, view.height, ROW_STEP, cols, count);
+    const items: ReactNode[] = [];
+    for (let i = start; i < end; i++) items.push(render(i));
+    const rowsBefore = Math.floor(start / cols);
+    const rowsAfter = Math.ceil(count / cols) - Math.ceil(end / cols);
+    return (
+      <div className="library-items grid" ref={ref} onScroll={measure}>
+        <div
+          className="card-grid"
+          style={{
+            gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+            paddingTop: rowsBefore * ROW_STEP,
+            paddingBottom: Math.max(0, rowsAfter) * ROW_STEP,
+          }}
+        >
+          {items}
+        </div>
+      </div>
+    );
+  }
   const [start, end] = visibleWindow(view.left, view.width, CARD_STEP, count);
   const items: ReactNode[] = [];
   for (let i = start; i < end; i++) items.push(render(i));
@@ -269,7 +318,7 @@ export function Library({ museum: m, selectedId, bigAudio, busy, readOnly, rando
               const filtered = sec.section === 'image' && counts.total > 0;
               return <div className="library-items"><div className="empty">{filtered ? 'No paintings match.' : `${sec.empty} Drop files here.`}</div></div>;
             }
-            return <VirtualRow count={list.length} render={(i) => card(list[i])} resetKey={sec.section === 'image' ? `${query}|${filter}` : sec.section} />;
+            return <VirtualList count={list.length} render={(i) => card(list[i])} resetKey={sec.section === 'image' ? `${query}|${filter}` : sec.section} />;
           })()}
         </div>
       ))}
