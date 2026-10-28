@@ -1,7 +1,7 @@
 // Streams painting + label textures in and out around the visitor (see streaming.ts for the policy).
 import * as THREE from 'three';
 import type { Vec2 } from '../shared/museum';
-import { LABEL_H, LABEL_W, labelTexture, loadTexture, placeholderTexture } from './textures';
+import { labelTexture, loadTexture, placeholderTexture } from './textures';
 import { WORK_OFFSET, type PaintingSlot } from './scene';
 import { PAINTING_LIMITS, planStreaming, type StreamLimits } from './streaming';
 
@@ -127,12 +127,12 @@ export class PaintingStreamer {
     if (owned) disposables.push(owned);
     const m = slot.media;
     if (m.title || m.artist || m.description) {
-      const lt = labelTexture(m, this.anisotropy);
-      const lg = new THREE.PlaneGeometry(LABEL_W, LABEL_H);
-      const lm = new THREE.MeshBasicMaterial({ map: lt, transparent: true });
+      const { texture: lt, w: lw, h: lh } = labelTexture(m, this.anisotropy);
+      const lg = new THREE.PlaneGeometry(lw, lh);
+      const lm = new THREE.MeshBasicMaterial({ map: lt });
       const label = new THREE.Mesh(lg, lm);
-      // local +x is the viewer's right while facing the wall (plane faces +z)
-      label.position.set(slot.w / 2 + 0.1 + LABEL_W / 2, -slot.h / 2 + LABEL_H / 2, WORK_OFFSET);
+      // local +x is the viewer's right while facing the wall (plane faces +z); bottom-aligned with the work
+      label.position.set(slot.w / 2 + 0.1 + lw / 2, -slot.h / 2 + lh / 2, WORK_OFFSET);
       g.add(label);
       disposables.push(lt, lg, lm);
     }

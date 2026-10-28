@@ -4,8 +4,9 @@ import type { MediaItem } from '../shared/museum';
 
 export const MAX_TEXTURE = 1600; // paintings (the editor already downsizes uploads to this)
 export const MAX_WALL_TEXTURE = 1024; // wall textures (tiled, so smaller is fine)
-export const LABEL_W = 0.5; // metres
-export const LABEL_H = 0.3;
+export const LABEL_W = 0.5; // max plaque width, metres
+const LABEL_PX_PER_M = 1024; // label canvas resolution
+const LABEL_MIN_PX = 200;
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -70,35 +71,48 @@ function wrap(g: CanvasRenderingContext2D, text: string, maxW: number): string[]
   return lines;
 }
 
-export function labelTexture(media: MediaItem, anisotropy: number): THREE.CanvasTexture {
-  const W = 512;
-  const H = Math.round((W * LABEL_H) / LABEL_W);
+/** A label plaque: an opaque card sized to its text, so it reads on any wall colour. Size in metres. */
+export function labelTexture(media: MediaItem, anisotropy: number): { texture: THREE.CanvasTexture; w: number; h: number } {
+  const MAX_W = Math.round(LABEL_W * LABEL_PX_PER_M);
+  const PAD = 24;
   const c = document.createElement('canvas');
-  c.width = W; c.height = H;
   const g = c.getContext('2d')!;
-  g.fillStyle = '#222';
   g.textBaseline = 'alphabetic';
   const out: { text: string; font: string; color: string; lh: number }[] = [];
   const add = (text: string, font: string, color: string, lh: number, maxLines: number) => {
     if (!text) return;
     g.font = font;
-    const ls = wrap(g, text, W - 16);
+    const ls = wrap(g, text, MAX_W - 2 * PAD);
     for (const l of ls.slice(0, maxLines)) out.push({ text: l, font, color, lh });
   };
   add(media.title ?? '', '600 40px system-ui, sans-serif', '#111', 48, 2);
   add(media.artist ?? '', '32px system-ui, sans-serif', '#444', 40, 1);
   add(media.description ?? '', '26px system-ui, sans-serif', '#666', 32, 4);
-  // bottom-anchored so the label hugs the bottom edge of the work
-  let y = H - 8 - out.reduce((s, l) => s + l.lh, 0);
-  y = Math.max(y, 0);
+  let textW = 0;
+  for (const l of out) {
+    g.font = l.font;
+    textW = Math.max(textW, g.measureText(l.text).width);
+  }
+  const W = Math.min(MAX_W, Math.max(LABEL_MIN_PX, Math.ceil(textW) + 2 * PAD));
+  const H = 2 * PAD + out.reduce((s, l) => s + l.lh, 0);
+  c.width = W; c.height = H; // resizing resets the context state
+  g.textBaseline = 'alphabetic';
+  g.fillStyle = '#f4f1ea';
+  g.fillRect(0, 0, W, H);
+  // thin edge, slightly darker bottom/right so the plaque reads as a raised card
+  g.fillStyle = '#d8d2c4';
+  g.fillRect(0, 0, W, 2); g.fillRect(0, 0, 2, H);
+  g.fillStyle = '#b9b2a2';
+  g.fillRect(0, H - 3, W, 3); g.fillRect(W - 3, 0, 3, H);
+  let y = PAD;
   for (const l of out) {
     y += l.lh;
     g.font = l.font; g.fillStyle = l.color;
-    g.fillText(l.text, 8, y - l.lh * 0.25, W - 16);
+    g.fillText(l.text, PAD, y - l.lh * 0.25, W - 2 * PAD);
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = anisotropy;
-  return t;
+  return { texture: t, w: W / LABEL_PX_PER_M, h: H / LABEL_PX_PER_M };
 }
 
