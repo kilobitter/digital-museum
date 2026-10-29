@@ -9,6 +9,7 @@ import { MAX_WALL_TEXTURE, loadTexture } from './textures';
 import { areaQuads, decomposeCeiling, finishKey, neededTextureIds, surfaceQuad, wallFinishKey } from './surfaces';
 import { buildSky, type SkyDome } from './sky';
 import { applyWallGradient, wallGeometry } from './wallGeometry';
+import { wallEnds } from './wallJoints';
 
 export const FRAME_DEPTH = 0.01; // frame back is flush with the wall face
 export const WORK_OFFSET = FRAME_DEPTH + 0.002; // image/label sit clearly in front of the frame front (~1.2 cm off the wall)
@@ -146,6 +147,7 @@ export async function buildMuseumScene(
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
+  const ends = wallEnds(museum.walls);
   for (const w of museum.walls) {
     const len = wallLength(w);
     const d = wallDirection(w);
@@ -157,11 +159,15 @@ export async function buildMuseumScene(
       entry = { mat: new THREE.MeshLambertMaterial(f.colorTop ? { color: 0xffffff, vertexColors: true, map: tex } : { color: new THREE.Color(f.color), map: tex }), geos: [] };
       wallMats.set(key, entry);
     }
-    // +T so corner joints have no notch (walls are centred on their segment)
-    const geo = wallGeometry(len + T, H, T, f.tileSize);
+    // Ends at corners and free ends reach T/2 past the end point so corners have no notch; end faces that would
+    // sit in another wall's face plane are left out (see wallJoints.ts) so nothing z-fights.
+    const e = ends.get(w.id)!;
+    const extA = e.a.extend ? T / 2 : 0, extB = e.b.extend ? T / 2 : 0;
+    const geo = wallGeometry(len + extA + extB, H, T, f.tileSize, { start: e.a.cap, end: e.b.cap });
     if (f.colorTop) applyWallGradient(geo, H, f.color, f.colorTop);
     q.setFromAxisAngle(up, -Math.atan2(d.y, d.x));
-    m4.compose(new THREE.Vector3((w.a.x + w.b.x) / 2, H / 2, (w.a.y + w.b.y) / 2), q, new THREE.Vector3(1, 1, 1));
+    const shift = (extB - extA) / 2; // box centre moves along the wall when the two ends differ
+    m4.compose(new THREE.Vector3((w.a.x + w.b.x) / 2 + d.x * shift, H / 2, (w.a.y + w.b.y) / 2 + d.y * shift), q, new THREE.Vector3(1, 1, 1));
     geo.applyMatrix4(m4);
     entry.geos.push(geo);
   }

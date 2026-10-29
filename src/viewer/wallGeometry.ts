@@ -6,7 +6,13 @@ import * as THREE from 'three';
  * uv = metres / tileSize, so textures are never stretched on the long faces, the ends or the top.
  * Opposite faces are mirrored so a texture reads the right way round from outside each face.
  */
-export function wallGeometry(length: number, height: number, thickness: number, tileSize: number): THREE.BoxGeometry {
+export function wallGeometry(
+  length: number,
+  height: number,
+  thickness: number,
+  tileSize: number,
+  caps: { start: boolean; end: boolean } = { start: true, end: true },
+): THREE.BufferGeometry {
   const geo = new THREE.BoxGeometry(length, height, thickness);
   const pos = geo.getAttribute('position');
   const nrm = geo.getAttribute('normal');
@@ -22,6 +28,16 @@ export function wallGeometry(length: number, height: number, thickness: number, 
     uv.setXY(i, u / tileSize, v / tileSize);
   }
   uv.needsUpdate = true;
+  if (caps.start && caps.end) return geo;
+  // BoxGeometry groups: 0 = +x face (end), 1 = -x face (start), then ±y, ±z. Drop the end faces not wanted.
+  const index = geo.getIndex()!;
+  const keep: number[] = [];
+  geo.groups.forEach((g, i) => {
+    if ((i === 0 && !caps.end) || (i === 1 && !caps.start)) return;
+    for (let k = g.start; k < g.start + g.count; k++) keep.push(index.getX(k));
+  });
+  geo.setIndex(keep);
+  geo.clearGroups();
   return geo;
 }
 

@@ -84,3 +84,25 @@ describe('applyWallGradient', () => {
     expect(plain.r).not.toBeCloseTo(0x8f / 255, 2); // really linear, not raw sRGB
   });
 });
+
+describe('wallGeometry end caps', () => {
+  const count = (geo: ReturnType<typeof wallGeometry>, pick: (nx: number) => boolean) => {
+    const nrm = geo.getAttribute('normal');
+    const idx = geo.getIndex()!;
+    let n = 0;
+    for (let k = 0; k < idx.count; k++) if (pick(nrm.getX(idx.getX(k)))) n++;
+    return n;
+  };
+  it('keeps all 12 triangles by default', () => {
+    expect(wallGeometry(4, 3, 0.2, 1).getIndex()!.count).toBe(36);
+  });
+  it('drops only the requested end faces (+x = end, -x = start)', () => {
+    const noEnd = wallGeometry(4, 3, 0.2, 1, { start: true, end: false });
+    expect(noEnd.getIndex()!.count).toBe(30);
+    expect(count(noEnd, (nx) => nx > 0.5)).toBe(0);
+    expect(count(noEnd, (nx) => nx < -0.5)).toBe(6);
+    const none = wallGeometry(4, 3, 0.2, 1, { start: false, end: false });
+    expect(none.getIndex()!.count).toBe(24);
+    expect(count(none, (nx) => Math.abs(nx) > 0.5)).toBe(0);
+  });
+});
