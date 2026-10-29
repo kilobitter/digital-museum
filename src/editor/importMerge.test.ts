@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Area, Museum, Wall } from '../shared/museum';
 import { defaultMuseum, parseMuseum } from '../shared/validate';
-import { mergeMuseum, usedMediaIds, type MediaMapping } from './importMerge';
+import { mergeMuseum, sameFinish, usedMediaIds, type MediaMapping } from './importMerge';
 
 const wall = (id: string, ax: number, ay: number, bx: number, by: number, finish?: Wall['finish']): Wall => ({ id, a: { x: ax, y: ay }, b: { x: bx, y: by }, ...(finish ? { finish } : {}) });
 const room = (p: string, x0: number, y0: number, x1: number, y1: number): Wall[] => [
@@ -325,5 +325,22 @@ describe('warnings', () => {
     expect(r.warnings.some((w) => w.includes('0.3 m thick'))).toBe(true);
     expect(r.warnings.some((w) => w.includes('"One" reaches 3.5 m'))).toBe(true);
     expect(run().warnings).toEqual([]);
+  });
+});
+
+describe('sameFinish with gradient', () => {
+  const f = { color: '#aabbcc', tileSize: 1 };
+  it('compares colorTop', () => {
+    expect(sameFinish(f, { ...f })).toBe(true);
+    expect(sameFinish({ ...f, colorTop: '#FFFFFF' }, { ...f, colorTop: '#ffffff' })).toBe(true);
+    expect(sameFinish({ ...f, colorTop: '#ffffff' }, f)).toBe(false);
+    expect(sameFinish({ ...f, colorTop: '#ffffff' }, { ...f, colorTop: '#000000' })).toBe(false);
+  });
+  it('bakes a differing gradient default into guest walls and keeps colorTop', () => {
+    const h = host(), g = guest();
+    g.settings.wallFinish = { color: '#112233', colorTop: '#445566', tileSize: 1 };
+    const r = run(h, g);
+    const baked = r.museum.walls.slice(4).filter((w) => w.finish?.colorTop === '#445566');
+    expect(baked.length).toBeGreaterThan(0);
   });
 });

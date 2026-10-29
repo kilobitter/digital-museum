@@ -41,7 +41,8 @@ on purpose: if it is taken, the server stops instead of quietly picking another 
 - **Random painting** hangs an unhung painting (random) on each click; "Pick another" in a work's
   inspector swaps it.
 - Walls use the default finish from the museum settings, or their own (colour, or texture times
-  colour, tiled at a size in metres).
+  colour, tiled at a size in metres). A wall finish can also be a vertical **Gradient** (bottom colour at
+  the floor to top colour at the wall top, no rotation); floors and ceilings have no gradient.
 - **Floors and ceilings**: the museum settings hold a default floor finish and ceiling finish (colour,
   or texture times colour, tiled at a size in metres). Floor and ceiling textures are aligned to the
   world origin, so neighbouring surfaces with the same finish continue seamlessly.

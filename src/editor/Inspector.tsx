@@ -4,7 +4,7 @@ import { defaultSky } from '../shared/validate';
 import { wallLength } from '../shared/geometry';
 import {
   coincidentEndpoints, deleteWall, fillLayout, fillWall, deleteWork, deleteZone, findMedia, findWall, findWork, findZone, flipWork, hungCount, imageHeight,
-  moveEndpoints, pickRandomPainting, round4, setSpawn, setWallFinish, setWorkT, setWorkWidth, updateMedia, updateSettings, updateWork,
+  moveEndpoints, pickRandomPainting, round4, setSpawn, setWallFinish, withGradient, setWorkT, setWorkWidth, updateMedia, updateSettings, updateWork,
   updateZone,
 } from './model';
 import { Field, NumField } from './fields';
@@ -27,7 +27,7 @@ interface Props {
 const title = (x: MediaItem) => x.title || x.name;
 
 /** Colour, texture and tile size of a wall finish. */
-export function FinishFields({ finish, museum: m, keyPrefix, onChange }: { finish: WallFinish; museum: Museum; keyPrefix: string; onChange(f: WallFinish, key: string): void }) {
+export function FinishFields({ finish, museum: m, keyPrefix, onChange, gradient = false }: { finish: WallFinish; museum: Museum; keyPrefix: string; onChange(f: WallFinish, key: string): void; /** Walls only: offer the vertical gradient. */ gradient?: boolean }) {
   const textures = m.media.filter((x) => x.kind === 'texture');
   const missing = finish.textureId !== undefined && !textures.some((t) => t.id === finish.textureId);
   const set = (patch: Partial<WallFinish>, key: string) => {
@@ -45,11 +45,38 @@ export function FinishFields({ finish, museum: m, keyPrefix, onChange }: { finis
         </select>
       </Field>
       <div className="grid2">
-        <Field label={finish.textureId ? 'Tint' : 'Colour'}>
-          <input type="color" className="colour" value={finish.color} onChange={(e) => set({ color: e.target.value }, 'color')} />
-        </Field>
+        {!(gradient && finish.colorTop) && (
+          <Field label={finish.textureId ? 'Tint' : 'Colour'}>
+            <input type="color" className="colour" value={finish.color} onChange={(e) => set({ color: e.target.value }, 'color')} />
+          </Field>
+        )}
         <Field label="Tile size"><NumField value={finish.tileSize} min={0} exclusiveMin step={0.1} onChange={(v) => set({ tileSize: v }, 'tile')} unit="m" /></Field>
       </div>
+      {gradient && (
+        <>
+          <label className="check">
+            <input type="checkbox" checked={finish.colorTop !== undefined} onChange={(e) => onChange(withGradient(finish, e.target.checked), `${keyPrefix}.gradient`)} />
+            Gradient
+          </label>
+          {finish.colorTop !== undefined && (
+            <div className="gradient-row">
+              <div
+                className="gradient-preview"
+                title="Top to bottom"
+                style={{ background: `linear-gradient(to bottom, ${finish.colorTop}, ${finish.color})` }}
+              />
+              <div className="grid2">
+                <Field label="Top">
+                  <input type="color" className="colour" value={finish.colorTop} onChange={(e) => set({ colorTop: e.target.value }, 'colorTop')} />
+                </Field>
+                <Field label="Bottom">
+                  <input type="color" className="colour" value={finish.color} onChange={(e) => set({ color: e.target.value }, 'color')} />
+                </Field>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </>
   );
 }
@@ -148,7 +175,7 @@ export function Inspector({ museum: m, mediaUrl, selection, selectedMediaId, onC
             />
             Use default finish
           </label>
-          {w.finish && <FinishFields finish={w.finish} museum={m} keyPrefix={`${w.id}.finish`} onChange={(f, key) => onChange(setWallFinish(m, w.id, f), key)} />}
+          {w.finish && <FinishFields gradient finish={w.finish} museum={m} keyPrefix={`${w.id}.finish`} onChange={(f, key) => onChange(setWallFinish(m, w.id, f), key)} />}
         </div>
         <FillWallPanel museum={m} wall={w} onChange={onChange} />
         {del((x) => deleteWall(x, w.id))}
@@ -421,7 +448,7 @@ export function SettingsPanel({ museum: m, onChange }: { museum: Museum; onChang
         <Field label="Facing"><NumField value={round4(s.spawn.yawDeg)} step={5} onChange={(v) => onChange(setSpawn(m, { yawDeg: v }), 's.yaw')} unit="°" /></Field>
       </div>
       <h3 className="subhead">Default wall finish</h3>
-      <FinishFields finish={s.wallFinish} museum={m} keyPrefix="s.finish" onChange={(f, key) => onChange(updateSettings(m, { wallFinish: f }), key)} />
+      <FinishFields gradient finish={s.wallFinish} museum={m} keyPrefix="s.finish" onChange={(f, key) => onChange(updateSettings(m, { wallFinish: f }), key)} />
       <h3 className="subhead">Default floor finish</h3>
       <FinishFields finish={s.floorFinish} museum={m} keyPrefix="s.floor" onChange={(f, key) => onChange(updateSettings(m, { floorFinish: f }), key)} />
       <h3 className="subhead">Default ceiling finish</h3>

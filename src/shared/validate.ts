@@ -100,7 +100,7 @@ export function parseMuseum(
 
   /** Collected after media is parsed; needs the media ids, so it is validated lazily. */
   const finishes: { f: WallFinish; path: string }[] = [];
-  const finish = (v: unknown, path: string): WallFinish => {
+  const finish = (v: unknown, path: string, wall = false): WallFinish => {
     if (!isObj(v)) {
       err(path, 'expected {color, tileSize}');
       return { color: '#ffffff', tileSize: 1 };
@@ -108,6 +108,11 @@ export function parseMuseum(
     const f: WallFinish = { color: '#ffffff', tileSize: num(v, 'tileSize', path, { positive: true }) };
     if (typeof v.color !== 'string' || !COLOR_RE.test(v.color)) err(`${path}.color`, "expected a colour like '#rrggbb'");
     else f.color = v.color;
+    if (v.colorTop !== undefined) {
+      if (!wall) err(`${path}.colorTop`, 'a gradient is only allowed on wall finishes');
+      else if (typeof v.colorTop !== 'string' || !COLOR_RE.test(v.colorTop)) err(`${path}.colorTop`, "expected a colour like '#rrggbb'");
+      else f.colorTop = v.colorTop;
+    }
     if (v.textureId !== undefined) {
       if (typeof v.textureId === 'string') f.textureId = v.textureId;
       else err(`${path}.textureId`, 'expected a string');
@@ -129,7 +134,7 @@ export function parseMuseum(
       wallThickness: num(s, 'wallThickness', 'settings', { positive: true }),
       gridSize: num(s, 'gridSize', 'settings', { positive: true }),
       ceiling: s.ceiling === true,
-      wallFinish: legacy ? { ...def.wallFinish } : finish(s.wallFinish, 'settings.wallFinish'),
+      wallFinish: legacy ? { ...def.wallFinish } : finish(s.wallFinish, 'settings.wallFinish', true),
       floorFinish: preV3 ? { ...def.floorFinish } : finish(s.floorFinish, 'settings.floorFinish'),
       ceilingFinish: preV3 ? { ...def.ceilingFinish } : finish(s.ceilingFinish, 'settings.ceilingFinish'),
       sky: defaultSky(),
@@ -156,7 +161,7 @@ export function parseMuseum(
       return { id: '', a: { x: 0, y: 0 }, b: { x: 0, y: 0 } };
     }
     const w: Wall = { id: str(raw, 'id', p), a: vec(raw.a, `${p}.a`), b: vec(raw.b, `${p}.b`) };
-    if (!legacy && raw.finish !== undefined) w.finish = finish(raw.finish, `${p}.finish`);
+    if (!legacy && raw.finish !== undefined) w.finish = finish(raw.finish, `${p}.finish`, true);
     if (isObj(raw.a) && isObj(raw.b) && isNum(raw.a.x) && isNum(raw.a.y) && isNum(raw.b.x) && isNum(raw.b.y) && w.a.x === w.b.x && w.a.y === w.b.y)
       err(p, 'zero-length wall (a and b are identical)');
     return w;

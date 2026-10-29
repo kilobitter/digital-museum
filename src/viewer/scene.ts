@@ -6,9 +6,9 @@ import { wallDirection, wallLength, workPlacement } from '../shared/geometry';
 import type { Finish, MediaItem, Museum, WallFinish } from '../shared/museum';
 import { computeFloorBounds, type Bounds } from './collision';
 import { MAX_WALL_TEXTURE, loadTexture } from './textures';
-import { areaQuads, decomposeCeiling, finishKey, neededTextureIds, surfaceQuad } from './surfaces';
+import { areaQuads, decomposeCeiling, finishKey, neededTextureIds, surfaceQuad, wallFinishKey } from './surfaces';
 import { buildSky, type SkyDome } from './sky';
-import { wallGeometry } from './wallGeometry';
+import { applyWallGradient, wallGeometry } from './wallGeometry';
 
 export const FRAME_DEPTH = 0.01; // frame back is flush with the wall face
 export const WORK_OFFSET = FRAME_DEPTH + 0.002; // image/label sit clearly in front of the frame front (~1.2 cm off the wall)
@@ -151,14 +151,15 @@ export async function buildMuseumScene(
     const d = wallDirection(w);
     const f = effectiveFinish(museum, w);
     const tex = f.textureId ? wallTextures.get(f.textureId) ?? null : null;
-    const key = `${tex ? f.textureId : ''}|${f.color.toLowerCase()}`;
+    const key = wallFinishKey(f, !!tex);
     let entry = wallMats.get(key);
     if (!entry) {
-      entry = { mat: new THREE.MeshLambertMaterial({ color: new THREE.Color(f.color), map: tex }), geos: [] };
+      entry = { mat: new THREE.MeshLambertMaterial(f.colorTop ? { color: 0xffffff, vertexColors: true, map: tex } : { color: new THREE.Color(f.color), map: tex }), geos: [] };
       wallMats.set(key, entry);
     }
     // +T so corner joints have no notch (walls are centred on their segment)
     const geo = wallGeometry(len + T, H, T, f.tileSize);
+    if (f.colorTop) applyWallGradient(geo, H, f.color, f.colorTop);
     q.setFromAxisAngle(up, -Math.atan2(d.y, d.x));
     m4.compose(new THREE.Vector3((w.a.x + w.b.x) / 2, H / 2, (w.a.y + w.b.y) / 2), q, new THREE.Vector3(1, 1, 1));
     geo.applyMatrix4(m4);

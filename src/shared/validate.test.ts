@@ -407,3 +407,35 @@ describe('format v4', () => {
     expect(r.ok && r.museum.settings.sky.kind).toBe('gradient');
   });
 });
+
+describe('wall gradient (colorTop)', () => {
+  it('round-trips on the default and per-wall wall finish', () => {
+    const m = base();
+    m.settings.wallFinish = { color: '#112233', colorTop: '#AABBCC', tileSize: 1 };
+    m.walls[0].finish = { color: '#000000', colorTop: '#ffffff', tileSize: 2 };
+    const r = parseMuseum(m);
+    expect(r.ok ? [] : r.errors).toEqual([]);
+    if (!r.ok) return;
+    expect(r.museum.version).toBe(4);
+    expect(r.museum.settings.wallFinish.colorTop).toBe('#AABBCC');
+    expect(r.museum.walls[0].finish).toEqual({ color: '#000000', colorTop: '#ffffff', tileSize: 2 });
+    const again = parseMuseum(JSON.parse(JSON.stringify(r.museum)));
+    expect(again.ok && again.museum).toEqual(r.museum);
+  });
+  it.each(['red', '#fff', '#12345g', 5, null])('rejects bad colorTop %j', (c) => {
+    let m = base(); m.settings.wallFinish.colorTop = c;
+    expectError(m, 'settings.wallFinish.colorTop');
+    m = base(); m.walls[0].finish = { color: '#ffffff', colorTop: c, tileSize: 1 };
+    expectError(m, 'walls[0].finish.colorTop');
+  });
+  it('rejects colorTop on floor, ceiling and area finishes', () => {
+    let m = base(); m.settings.floorFinish.colorTop = '#ffffff';
+    expectError(m, 'settings.floorFinish.colorTop');
+    m = base(); m.settings.ceilingFinish.colorTop = '#ffffff';
+    expectError(m, 'settings.ceilingFinish.colorTop');
+    m = base(); m.areas = [{ id: 'a1', name: '', rect: { x: 0, y: 0, w: 1, h: 1 }, floor: { color: '#ffffff', colorTop: '#000000', tileSize: 1 } }];
+    expectError(m, 'areas[0].floor.colorTop');
+    m = base(); m.areas = [{ id: 'a1', name: '', rect: { x: 0, y: 0, w: 1, h: 1 }, ceiling: { color: '#ffffff', colorTop: '#000000', tileSize: 1 } }];
+    expectError(m, 'areas[0].ceiling.colorTop');
+  });
+});

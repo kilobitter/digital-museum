@@ -333,6 +333,12 @@ export function updateMedia(m: Museum, id: string, patch: MediaPatch): Museum {
   };
 }
 
+/** Turn a wall finish's vertical gradient on (top colour starts equal to `color`) or off (colorTop removed). */
+export function withGradient(f: WallFinish, on: boolean): WallFinish {
+  const { colorTop: _old, ...rest } = f;
+  return on ? { ...rest, colorTop: f.colorTop ?? f.color } : rest;
+}
+
 /** Set (or with undefined, clear) a wall's own finish. */
 export function setWallFinish(m: Museum, wallId: string, finish: WallFinish | undefined): Museum {
   return {

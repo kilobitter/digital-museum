@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultMuseum } from '../shared/validate';
-import { LAYER_STEP, areaQuads, decomposeCeiling, neededTextureIds, stackLevels, surfaceQuad } from './surfaces';
+import { LAYER_STEP, areaQuads, decomposeCeiling, neededTextureIds, stackLevels, surfaceQuad, wallFinishKey } from './surfaces';
 
 const attr = (g: ReturnType<typeof surfaceQuad>, name: string) => g.getAttribute(name);
 
@@ -165,5 +165,15 @@ describe('decomposeCeiling', () => {
     expect(total(all)).toBeCloseTo(144);
     expect(all.length).toBeLessThan(61 * 61 / 3);
     expect(p.groups.length).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('wallFinishKey', () => {
+  const a = { color: '#aabbcc', tileSize: 1 };
+  it('equal for uniform walls, differs by colorTop (case-insensitive)', () => {
+    expect(wallFinishKey(a, false)).toBe(wallFinishKey({ ...a }, false));
+    expect(wallFinishKey({ ...a, colorTop: '#FFFFFF' }, false)).toBe(wallFinishKey({ ...a, colorTop: '#ffffff' }, false));
+    expect(wallFinishKey({ ...a, colorTop: '#ffffff' }, false)).not.toBe(wallFinishKey(a, false));
+    expect(wallFinishKey({ ...a, colorTop: '#ffffff' }, false)).not.toBe(wallFinishKey({ ...a, colorTop: '#000000' }, false));
   });
 });

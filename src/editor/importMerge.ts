@@ -1,5 +1,5 @@
 // Pure merge of a guest museum into the host museum (one-time copy). No React, no DOM.
-import type { Area, AudioZone, Finish, MediaItem, Museum, Vec2, Wall, Work } from '../shared/museum';
+import type { Area, AudioZone, Finish, MediaItem, Museum, Vec2, Wall, WallFinish, Work } from '../shared/museum';
 import { newId, round4, snapValue } from './model';
 import { EMPTY_SEL, type MultiSel } from './multiSelect';
 
@@ -34,8 +34,11 @@ export interface MergeResult {
 const GAP_M = 2;
 const MIN_BASE_SIDE = 0.2;
 
-export function sameFinish(a: Finish, b: Finish): boolean {
-  return a.textureId === b.textureId && a.color.toLowerCase() === b.color.toLowerCase() && a.tileSize === b.tileSize;
+const lc = (c?: string) => c?.toLowerCase();
+
+export function sameFinish(a: WallFinish, b: WallFinish): boolean {
+  return a.textureId === b.textureId && a.color.toLowerCase() === b.color.toLowerCase() && a.tileSize === b.tileSize &&
+    lc(a.colorTop) === lc(b.colorTop);
 }
 
 interface Bounds { minX: number; minY: number; maxX: number; maxY: number }

@@ -152,6 +152,8 @@ const media = [
 // Room A: x 0..8, y 0..6. Room B: x 8..16, y 0..6. Doorway in the shared wall at y 2..4.
 // One wall (wB-top) gets its own finish: the plaster texture with a warm tint. The rest use the default.
 const plaster = { textureId: 'tex1', color: '#fff1e0', tileSize: 1.2 };
+// wB-right gets a vertical gradient (floor colour -> top colour).
+const dusk = { color: '#e8d5c4', colorTop: '#5b6c8f', tileSize: 1 };
 const walls = [
   { id: 'wA-top', a: { x: 0, y: 0 }, b: { x: 8, y: 0 } },     // perp = +y (into the room)
   { id: 'wA-bottom', a: { x: 8, y: 6 }, b: { x: 0, y: 6 } },  // perp = -y (into the room)
@@ -160,7 +162,7 @@ const walls = [
   { id: 'wD-south', a: { x: 8, y: 6 }, b: { x: 8, y: 4 } },   // perp = +x (room B); side -1 = room A
   { id: 'wB-top', a: { x: 8, y: 0 }, b: { x: 16, y: 0 }, finish: plaster },
   { id: 'wB-bottom', a: { x: 16, y: 6 }, b: { x: 8, y: 6 } },
-  { id: 'wB-right', a: { x: 16, y: 0 }, b: { x: 16, y: 6 } }, // perp = -x (into the room)
+  { id: 'wB-right', a: { x: 16, y: 0 }, b: { x: 16, y: 6 }, finish: dusk }, // perp = -x (into the room)
 ];
 // Floors: room A uses the plaster-free default; room B gets a floor area with a generated wood-like texture,
 // and a small rug (plain colour) sits on top of it. Room A also gets a tinted ceiling area.

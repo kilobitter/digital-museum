@@ -5,7 +5,7 @@ import { wallNormal } from '../shared/geometry';
 import {
   addMedia, addRoom, addWall, addZone, clampT, coincidentEndpoints, computeWarnings, deleteWall, findHangTarget, flipWork, hangWork,
   mediaUsage, moveEndpoints, removeMedia, resizeRect, setWorkT, updateWork, updateZone, snapValue, moveWall,
-  pickRandomPainting, updateMedia, setWallFinish, updateSettings, hungCount, fillLayout, fillWall,
+  pickRandomPainting, updateMedia, setWallFinish, withGradient, updateSettings, hungCount, fillLayout, fillWall,
 } from './model';
 import { canRedo, canUndo, commitFrom, createHistory, push, redo, replace, undo } from './history';
 import { hitTest } from './hit';
@@ -410,5 +410,17 @@ describe('fillWall', () => {
     expect(fillWall(m, m.walls[0].id, opts, rng)).toMatchObject({ ok: false });
     const b = base();
     expect(fillWall(b, b.walls[0].id, { ...opts, width: 5 }, rng)).toMatchObject({ ok: false });
+  });
+});
+
+describe('withGradient', () => {
+  it('starts with colorTop = colour, and removes it when turned off', () => {
+    const f = { color: '#112233', tileSize: 2, textureId: 't' };
+    const on = withGradient(f, true);
+    expect(on).toEqual({ ...f, colorTop: '#112233' });
+    expect(withGradient({ ...on, colorTop: '#ffffff' }, true).colorTop).toBe('#ffffff');
+    const off = withGradient(on, false);
+    expect(off).toEqual(f);
+    expect(off).not.toHaveProperty('colorTop');
   });
 });

@@ -26,6 +26,7 @@ describe('make-sample.mjs', () => {
     expect(r.museum.areas.some((a) => a.ceiling)).toBe(true);
     expect(r.museum.media.some((m) => m.kind === 'texture')).toBe(true);
     expect(r.museum.walls.some((w) => w.finish?.textureId)).toBe(true);
+    expect(r.museum.walls.some((w) => w.finish?.colorTop)).toBe(true);
     expect(r.museum.media.find((m) => m.id === 'img1')?.title).toBe('Sunrise');
     for (const m of r.museum.media) expect(existsSync(join(out, m.file))).toBe(true);
     expect(readdirSync(join(out, 'media')).length).toBe(r.museum.media.length);

@@ -1,6 +1,6 @@
 // Floor / ceiling surfaces: world-aligned quads, floor area layers and the flat ceiling decomposition.
 import * as THREE from 'three';
-import type { Area, Finish, Museum } from '../shared/museum';
+import type { Area, Finish, Museum, WallFinish } from '../shared/museum';
 
 /** Height difference between two stacked areas (1 mm). Later entries in `Museum.areas` sit higher. */
 export const LAYER_STEP = 0.001;
@@ -159,6 +159,9 @@ export function decomposeCeiling(bounds: Rect, base: Finish, areas: readonly Are
 
 /** Key that identifies one material: texture (when it loaded) and colour. */
 export const finishKey = (f: Finish, textureLoaded: boolean): string => `${textureLoaded && f.textureId ? f.textureId : ''}|${f.color.toLowerCase()}`;
+
+/** Merge key of a wall finish: like finishKey plus the gradient's top colour (walls with equal keys share one mesh). */
+export const wallFinishKey = (f: WallFinish, textureLoaded: boolean): string => `${finishKey(f, textureLoaded)}|${f.colorTop ? f.colorTop.toLowerCase() : ''}`;
 
 /** Distinct texture ids the viewer needs: walls (effective finish), floor, and (when a ceiling exists) ceiling and areas. */
 export function neededTextureIds(m: Museum): string[] {

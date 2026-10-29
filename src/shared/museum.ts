@@ -29,7 +29,7 @@ export interface MuseumSettings {
   /** Render a ceiling at wallHeight over the floor area. Default true. */
   ceiling: boolean;
   /** Finish for every wall without its own `finish`. Default { color: '#ffffff', tileSize: 1 }. */
-  wallFinish: Finish;
+  wallFinish: WallFinish;
   /** Floor everywhere no area overrides it. Default { color: '#e6e3dd', tileSize: 1 }. */
   floorFinish: Finish;
   /** Ceiling everywhere no area overrides it (only rendered when `ceiling` is true). Default { color: '#ffffff', tileSize: 1 }. */
@@ -65,7 +65,15 @@ export type Sky =
   | { kind: 'panorama'; textureId: string; rotationDeg: number };
 
 /** Kept for readability at wall call sites. */
-export type WallFinish = Finish;
+/**
+ * Walls only: optional vertical gradient. With `colorTop`, the colour runs from `color` at the floor to
+ * `colorTop` at the top of the wall (wallHeight); still multiplied with the texture when there is one.
+ * No rotation: always bottom → top. Omit for a uniform colour. Additive in v4 (no version bump).
+ */
+export interface WallFinish extends Finish {
+  /** '#rrggbb'. */
+  colorTop?: string;
+}
 
 /**
  * A rectangle that overrides the floor and/or ceiling inside it. At least one of `floor`,

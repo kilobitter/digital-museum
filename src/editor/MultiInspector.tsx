@@ -27,6 +27,7 @@ export function MultiInspector({ museum: m, multi, includeAreas, onIncludeAreas,
   if (base) {
     if (custom.some((w) => w.finish!.textureId !== base.textureId)) differs.push('texture');
     if (custom.some((w) => w.finish!.color !== base.color)) differs.push('colour');
+    if (custom.some((w) => (w.finish!.colorTop?.toLowerCase()) !== (base.colorTop?.toLowerCase()))) differs.push('gradient');
     if (custom.some((w) => w.finish!.tileSize !== base.tileSize)) differs.push('tile size');
   }
   const ids = walls.map((w) => w.id);
@@ -67,7 +68,7 @@ export function MultiInspector({ museum: m, multi, includeAreas, onIncludeAreas,
           {!allDefault && base && (
             <>
               {differs.length > 0 && <p className="hint">Values differ between walls ({differs.join(', ')}); the first one is shown. Changing a value applies it to all.</p>}
-              <FinishFields finish={base} museum={m} keyPrefix={keyPrefix} onChange={(f, key) => onChange(setFinishForWalls(m, ids, f), key)} />
+              <FinishFields gradient finish={base} museum={m} keyPrefix={keyPrefix} onChange={(f, key) => onChange(setFinishForWalls(m, ids, f), key)} />
             </>
           )}
         </div>
