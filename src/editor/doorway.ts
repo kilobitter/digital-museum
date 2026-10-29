@@ -84,7 +84,58 @@ export type DoorTarget = {
   gap: GapResult;
   /** Gap end points in plan coordinates, for the preview (only when gap.ok). */
   line: { a: Vec2; b: Vec2 } | null;
+  /**
+   * Other walls the same doorway passes through (back-to-back or overlapping walls of neighbouring rooms),
+   * each with the gap centre projected onto it and the width of the main gap. Empty when gap is not ok.
+   */
+  partners: { wallId: string; centreT: number; width: number; line: { a: Vec2; b: Vec2 } | null }[];
 };
+
+const PARALLEL_SIN = Math.sin((2 * Math.PI) / 180);
+
+function gapLine(wall: Wall, gap: GapResult): { a: Vec2; b: Vec2 } | null {
+  if (!gap.ok) return null;
+  const d = wallDirection(wall), a = wall.a;
+  return { a: { x: a.x + d.x * gap.from, y: a.y + d.y * gap.from }, b: { x: a.x + d.x * gap.to, y: a.y + d.y * gap.to } };
+}
+
+/**
+ * Walls (other than `mainId`) running parallel through point `c`: on the same line or back to back, i.e. within one
+ * wall thickness (+5 cm) of `c` across the wall, and with `c` inside their length.
+ */
+function wallsThrough(m: Museum, mainId: string, dir: Vec2, c: Vec2): { wall: Wall; t: number }[] {
+  const reach = m.settings.wallThickness + 0.05;
+  const out: { wall: Wall; t: number }[] = [];
+  for (const w of m.walls) {
+    if (w.id === mainId) continue;
+    const len = wallLength(w);
+    if (len === 0) continue;
+    const d = wallDirection(w);
+    if (Math.abs(d.x * dir.y - d.y * dir.x) > PARALLEL_SIN) continue;
+    const rx = c.x - w.a.x, ry = c.y - w.a.y;
+    const t = rx * d.x + ry * d.y;
+    const across = Math.abs(rx * d.y - ry * d.x);
+    if (across <= reach && t > T_EPS && t < len - T_EPS) out.push({ wall: w, t });
+  }
+  return out;
+}
+
+/** Cut the doorway into the target wall and every partner wall in one go. */
+export function cutDoorTarget(m: Museum, target: DoorTarget, width: number): DoorwayResult {
+  const first = cutDoorway(m, target.wallId, target.centreT, width);
+  if (!first.ok) return first;
+  let museum = first.museum;
+  const removedWorks = [...first.removedWorks];
+  const wallIds = [...first.wallIds];
+  for (const p of target.partners) {
+    const r = cutDoorway(museum, p.wallId, p.centreT, p.width);
+    if (!r.ok) continue; // e.g. a short partner wall: leave it alone
+    museum = r.museum;
+    removedWorks.push(...r.removedWorks);
+    wallIds.push(...r.wallIds);
+  }
+  return { ok: true, museum, removedWorks, wallIds };
+}
 
 /** The wall under the cursor and where the gap would go (centre snapped to 0.05 m, clamped as cutDoorway does). */
 export function findDoorTarget(m: Museum, p: Vec2, tol: number, width: number): DoorTarget | null {
@@ -98,10 +149,16 @@ export function findDoorTarget(m: Museum, p: Vec2, tol: number, width: number): 
   if (!best) return null;
   const centreT = round4(snapValue(best.t, 0.05));
   const gap = doorwayGap(wallLength(best.wall), centreT, width);
-  let line: DoorTarget['line'] = null;
+  const line = gapLine(best.wall, gap);
+  const partners: DoorTarget['partners'] = [];
   if (gap.ok) {
-    const d = wallDirection(best.wall), a = best.wall.a;
-    line = { a: { x: a.x + d.x * gap.from, y: a.y + d.y * gap.from }, b: { x: a.x + d.x * gap.to, y: a.y + d.y * gap.to } };
+    const d = wallDirection(best.wall), mid = (gap.from + gap.to) / 2;
+    const c = { x: best.wall.a.x + d.x * mid, y: best.wall.a.y + d.y * mid };
+    const w = round4(gap.to - gap.from);
+    for (const o of wallsThrough(m, best.wall.id, d, c)) {
+      const t = round4(o.t);
+      partners.push({ wallId: o.wall.id, centreT: t, width: w, line: gapLine(o.wall, doorwayGap(wallLength(o.wall), t, w)) });
+    }
   }
-  return { wallId: best.wall.id, centreT, gap, line };
+  return { wallId: best.wall.id, centreT, gap, line, partners };
 }

@@ -18,7 +18,7 @@ export const TOOLS: ToolDef[] = [
   { tool: 'select', key: 'V', label: 'Select', hint: 'Click to select; drag empty space to box-select, Shift adds or removes. Drag to move (groups too), arrows nudge, [ ] rotate, Ctrl/Cmd+D duplicates, Delete removes. Moved walls detach from walls they were joined to.', layer: 'build' },
   { tool: 'wall', key: 'W', label: 'Wall', hint: 'Click to chain walls. Esc or right-click ends the chain.', layer: 'build' },
   { tool: 'room', key: 'R', label: 'Room', hint: 'Drag a rectangle to make four walls.', layer: 'build' },
-  { tool: 'door', key: 'D', label: 'Door', hint: 'Hover a wall and click to cut a doorway. Paintings in the way are taken down (Undo brings them back).', layer: 'build' },
+  { tool: 'door', key: 'D', label: 'Door', hint: 'Hover a wall and click to cut a doorway, through back-to-back walls of neighbouring rooms too. Paintings in the way are taken down (Undo brings them back).', layer: 'build' },
   { tool: 'work', key: 'H', label: 'Hang', hint: 'Select a painting in the library (or switch on Random painting), then click near a wall face.', layer: 'build' },
   { tool: 'zoneRect', key: 'Z', label: 'Zone', hint: 'Drag a rectangular audio zone.', layer: 'build' },
   { tool: 'zoneCircle', key: 'C', label: 'Circle', hint: 'Drag from the centre for a circular audio zone.', layer: 'build' },

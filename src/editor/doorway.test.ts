@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Museum, Work } from '../shared/museum';
 import { defaultMuseum, parseMuseum } from '../shared/validate';
 import { addMedia, addWall } from './model';
-import { cutDoorway, doorwayGap, findDoorTarget, clampDoorWidth } from './doorway';
+import { cutDoorTarget, cutDoorway, doorwayGap, findDoorTarget, clampDoorWidth } from './doorway';
 
 const valid = (m: Museum) => {
   const r = parseMuseum(m);
@@ -164,5 +164,54 @@ describe('findDoorTarget', () => {
     const t = findDoorTarget(short, { x: 0.5, y: 0 }, 0.1, 1.2)!;
     expect(t.gap.ok).toBe(false);
     expect(t.line).toBeNull();
+  });
+});
+
+describe('doorway through neighbouring walls', () => {
+  /** A 10 m wall along y=0 plus `others`. */
+  function plan(others: [number, number, number, number][]) {
+    let m = defaultMuseum();
+    const ids: string[] = [];
+    for (const [ax, ay, bx, by] of [[0, 0, 10, 0], ...others]) {
+      const r = addWall(m, { x: ax, y: ay }, { x: bx, y: by })!;
+      m = r.museum;
+      ids.push(r.id);
+    }
+    return { m, ids };
+  }
+
+  it('cuts back-to-back walls of two rooms in one click, aligned', () => {
+    const { m, ids } = plan([[10, 0.2, 2, 0.2]]); // neighbour's wall, reversed direction, one thickness away
+    const t = findDoorTarget(m, { x: 5, y: 0.05 }, 0.3, 1.2)!;
+    expect(t.wallId).toBe(ids[0]);
+    expect(t.partners.map((p) => p.wallId)).toEqual([ids[1]]);
+    const r = cutDoorTarget(m, t, 1.2);
+    if (!r.ok) throw new Error(r.reason);
+    valid(r.museum);
+    expect(r.museum.walls).toHaveLength(4);
+    const xs = (y: number) => r.museum.walls.filter((w) => w.a.y === y).flatMap((w) => [w.a.x, w.b.x]).sort((a, b) => a - b);
+    expect(xs(0)).toEqual([0, 4.4, 5.6, 10]);
+    expect(xs(0.2)).toEqual([2, 4.4, 5.6, 10]);
+  });
+
+  it('cuts overlapping walls on the same line', () => {
+    const { m } = plan([[3, 0, 8, 0]]);
+    const r = cutDoorTarget(m, findDoorTarget(m, { x: 5, y: 0 }, 0.3, 1)!, 1);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.museum.walls).toHaveLength(4);
+  });
+
+  it('leaves perpendicular, distant and non-overlapping walls alone', () => {
+    const { m, ids } = plan([[5, 0, 5, 4], [0, 1, 10, 1], [7, 0.2, 10, 0.2]]);
+    const t = findDoorTarget(m, { x: 3, y: 0 }, 0.3, 1.2)!;
+    expect(t.wallId).toBe(ids[0]);
+    expect(t.partners).toEqual([]);
+  });
+
+  it('skips a partner that is shorter than the door but still cuts the main wall', () => {
+    const { m } = plan([[4.8, 0.2, 5.6, 0.2]]);
+    const r = cutDoorTarget(m, findDoorTarget(m, { x: 5.2, y: 0 }, 0.3, 1.2)!, 1.2);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.museum.walls).toHaveLength(3);
   });
 });

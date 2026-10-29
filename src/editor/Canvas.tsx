@@ -10,7 +10,7 @@ import { areaHandles, hitTestAreas } from './hit';
 import {
   addArea, areaTag, fillRoom, findArea, SKY_BLUE, MIN_AREA_SIZE, moveArea, rectFromDrag, resizeAreaRect, snapAreaMove, snapAreaPoint, updateArea,
 } from './areaModel';
-import { cutDoorway, findDoorTarget } from './doorway';
+import { cutDoorTarget, findDoorTarget } from './doorway';
 import {
   EMPTY_SEL, hasItem, itemsInRect, moveSelection, selCount, toggleItem, unionSel, type ItemRef, type MultiSel,
 } from './multiSelect';
@@ -357,7 +357,7 @@ export function Canvas(p: Props) {
           p.onNotice('Click on a wall to cut a doorway.');
           return;
         }
-        const r = cutDoorway(m, t.wallId, t.centreT, p.doorWidth);
+        const r = cutDoorTarget(m, t, p.doorWidth);
         if (!r.ok) {
           p.onNotice(r.reason);
           return;
@@ -848,7 +848,10 @@ export function Canvas(p: Props) {
         })()}
         {doorT && doorWall && (
           doorT.line ? (
-            <line className="door-gap" x1={doorT.line.a.x} y1={doorT.line.a.y} x2={doorT.line.b.x} y2={doorT.line.b.y} strokeWidth={th * 1.6} />
+            <>
+              <line className="door-gap" x1={doorT.line.a.x} y1={doorT.line.a.y} x2={doorT.line.b.x} y2={doorT.line.b.y} strokeWidth={th * 1.6} />
+              {doorT.partners.map((q) => q.line && <line key={q.wallId} className="door-gap" x1={q.line.a.x} y1={q.line.a.y} x2={q.line.b.x} y2={q.line.b.y} strokeWidth={th * 1.6} />)}
+            </>
           ) : (
             <line className="door-gap bad" x1={doorWall.a.x} y1={doorWall.a.y} x2={doorWall.b.x} y2={doorWall.b.y} strokeWidth={th * 1.6} />
           )
