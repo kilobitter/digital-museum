@@ -17,6 +17,11 @@
       #panel button.primary { background: #fff; color: #111; border-color: #fff; }
       #panel button:hover { filter: brightness(1.15); }
       #panel ul { text-align: left; color: #f0a0a0; font-family: ui-monospace, Menlo, monospace; font-size: 13px; max-height: 50vh; overflow: auto; padding-left: 20px; }
+      #panel form.pw { margin-top: 20px; }
+      #panel input[type=password] { font: inherit; font-size: 18px; width: 100%; max-width: 360px; box-sizing: border-box; padding: 12px 14px; border-radius: 8px; border: 1px solid #666; background: #222; color: #fff; }
+      #panel .remember { display: flex; gap: 8px; align-items: center; justify-content: center; margin-top: 12px; color: #bbb; cursor: pointer; }
+      #panel .pw-error { color: #f0a0a0; margin: 10px 0 0; }
+      #panel .pw-error[hidden] { display: none; }
       #panel.error h1 { color: #ff8a8a; }
       #toast { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); background: rgba(0,0,0,0.75); color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 16px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 5; }
       #toast.show { opacity: 1; }

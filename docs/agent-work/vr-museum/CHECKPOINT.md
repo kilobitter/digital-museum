@@ -6,6 +6,7 @@ Workspace and baseline: /Users/ghijs/development/Digital museum, T1 0b933bc, T2 
 Routing: root Opus; builder Sonnet (user confirmed via /tasks, 2026-10-27)
 
 ## Accepted work and fixed contracts
+- T13 accepted (0 corrections), 2026-10-30: sealed publishing. scripts/seal.mjs (public/museum -> public/sealed, AES-GCM, PBKDF2 600k, AAD=path), viewer password screen + remember-on-device (src/viewer/sealed*.ts, mediaOpener.ts, keyStore.ts), build guard drops dist/museum, tests use src/shared/fixtures/sample-museum.json. Browser/Quest unverified. Pending user: choose password + npm run seal, git rm --cached public/museum, decide on history rewrite, push.
 - T11 accepted (0 corrections): src/shared/zip.ts (store writer, store+deflate reader over Blob slices), importSource/importFlow/importMerge (re-id, dedupe by file+kind, keep-their-look base area, place right of host, select imported), Export .zip. Collaboration track complete; all browser UI unverified.
 - T10 accepted (0 corrections): multiSelect.ts (box/shift/Ctrl+A, move, rotate [ ], duplicate, delete, batch wall finish, Include areas toggle), doorway.ts + Door tool (D). UI unverified in browser.
 - T9 accepted (0 corrections; 2 small Opus fixes: upload URL from disk-backed file, 'Choose another folder' on invalid screen): hosted editor.html with File System Access folder store, MuseumStore abstraction, ?source=folder viewer preview, shared mediaFiles.ts. Browser behaviour unverified.

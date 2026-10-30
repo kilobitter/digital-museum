@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultMuseum, parseMuseum } from './validate';
-import sample from '../../public/museum/museum.json';
+import sample from './fixtures/sample-museum.json';
 
 type Any = Record<string, any>;
 const base = (): Any => ({
@@ -37,7 +37,7 @@ describe('defaultMuseum', () => {
 });
 
 describe('parseMuseum', () => {
-  it('accepts the museum in public/museum (migrated if v1)', () => {
+  it('accepts the sample museum fixture', () => {
     const r = parseMuseum(sample);
     expect(r.ok ? [] : r.errors).toEqual([]);
   });
@@ -262,7 +262,7 @@ describe('v1 migration', () => {
     m = v1(); m.media[0].kind = 'texture';
     expectError(m, 'media[0].kind');
   });
-  it('migrates a copy of the real public/museum/museum.json', () => {
+  it('migrates a copy of the sample museum fixture', () => {
     const copy = JSON.parse(JSON.stringify(sample));
     const r = parseMuseum(copy);
     expect(r.ok ? [] : r.errors).toEqual([]);

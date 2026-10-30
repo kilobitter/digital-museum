@@ -3,6 +3,7 @@ import basicSsl from '@vitejs/plugin-basic-ssl';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 import { museumApi } from './src/devserver/museumApi';
+import { sealedBuildGuard } from './src/devserver/sealedBuildGuard';
 
 const projectRoot = fileURLToPath(new URL('.', import.meta.url));
 
@@ -11,7 +12,7 @@ const projectRoot = fileURLToPath(new URL('.', import.meta.url));
 // and the editor only loads it behind `import.meta.env.DEV`, so it never reaches the build.
 export default defineConfig({
   base: './',
-  plugins: [basicSsl(), react(), museumApi(projectRoot)],
+  plugins: [basicSsl(), react(), museumApi(projectRoot), sealedBuildGuard()],
   server: {
     host: true,
     // A fixed, uncommon port; fail loudly instead of silently moving to another one when it is taken

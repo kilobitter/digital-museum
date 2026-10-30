@@ -9,7 +9,7 @@ import {
 } from './model';
 import { canRedo, canUndo, commitFrom, createHistory, push, redo, replace, undo } from './history';
 import { hitTest } from './hit';
-import sample from '../../public/museum/museum.json';
+import sample from '../shared/fixtures/sample-museum.json';
 
 function withImage(m: Museum, name = 'sunset.png') {
   return addMedia(m, { kind: 'image', file: 'media/a.png', name, width: 2000, height: 1000 });

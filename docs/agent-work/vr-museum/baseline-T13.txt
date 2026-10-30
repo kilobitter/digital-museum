@@ -1,0 +1,14 @@
+main
+f0a089e31eb188e4fc712b2c4dd11f2368b664c8
+ M README.md
+ M public/museum/museum.json
+ M src/editor/Canvas.tsx
+ M src/editor/styles.css
+ M src/editor/types.ts
+ M src/viewer/scene.ts
+ M src/viewer/wallGeometry.ts
+ M src/viewer/wallJoints.test.ts
+ M src/viewer/wallJoints.ts
+?? docs/agent-work/vr-museum/baseline-T13.txt
+?? public/museum/media/dl239zdkrh.jpg
+?? public/museum/media/r5gh45xtbq.jpg

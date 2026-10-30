@@ -8,11 +8,18 @@ import { Player } from './player';
 import { buildMuseumScene } from './scene';
 import { PaintingStreamer } from './streamer';
 import { FolderSourceError, openFolderSource, wantsFolderSource } from './folderSource';
+import { SealedSourceError, openSealedSource, type SealedSource } from './sealedSource';
 import { hideOverlay, setControlsHint, showAllowAccess, showError, showLoading, showStart, toast } from './ui';
 import { XRLocomotion } from './xr';
 
 const MUSEUM_BASE = './museum/';
 let urlFor = (file: string) => MUSEUM_BASE + file;
+let forgetPassword: (() => void) | null = null;
+
+/** Plaintext `./museum/` only in the dev server (unless `?sealed`); everywhere else the sealed copy. */
+function wantsSealed(): boolean {
+  return !import.meta.env.DEV || new URLSearchParams(location.search).has('sealed');
+}
 
 async function fetchMuseum(): Promise<Museum> {
   let res: Response;
@@ -69,6 +76,11 @@ async function main(): Promise<void> {
     );
     museum = src.museum;
     urlFor = src.urlFor;
+  } else if (wantsSealed()) {
+    const src: SealedSource = await openSealedSource();
+    museum = src.museum;
+    urlFor = src.urlFor;
+    forgetPassword = src.forget;
   } else {
     museum = await fetchMuseum();
   }
@@ -161,6 +173,7 @@ async function main(): Promise<void> {
       warnings: allWarnings(),
       xrSupported: supported,
       message,
+      onForget: forgetPassword ?? undefined,
       onVR: () => void enterVR(),
       onDesktop: () => {
         hideOverlay();
@@ -206,6 +219,7 @@ async function main(): Promise<void> {
 main().catch((e) => {
   console.error(e);
   if (e instanceof FolderSourceError) showError(e.title, e.details);
+  else if (e instanceof SealedSourceError) showError(e.title, e.details);
   else if (e instanceof MuseumError) showError(e.title, e.details);
   else showError('Something went wrong', [e instanceof Error ? e.message : String(e)]);
 });

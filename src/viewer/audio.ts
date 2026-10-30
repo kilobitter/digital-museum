@@ -3,6 +3,7 @@
 // One looping AudioBufferSourceNode per resident zone, gain driven per frame.
 import { distanceInside, zoneGain } from '../shared/zones';
 import type { AudioZone, Museum, Vec2 } from '../shared/museum';
+import { openMedia } from './mediaOpener';
 import { AUDIO_LIMITS, planByDistance, type StreamLimits } from './streaming';
 
 interface Voice {
@@ -111,9 +112,16 @@ export class ZoneAudio {
         d = {
           refs: new Set(),
           promise: (async () => {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            return ctx.decodeAudioData(await res.arrayBuffer());
+            const opened = await openMedia(url); // sealed museums: decrypted blob: URL
+            let bytes: ArrayBuffer;
+            try {
+              const res = await fetch(opened.url);
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              bytes = await res.arrayBuffer();
+            } finally {
+              opened.release();
+            }
+            return ctx.decodeAudioData(bytes);
           })(),
         };
         this.decoded.set(file, d);

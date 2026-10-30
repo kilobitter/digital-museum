@@ -1,6 +1,7 @@
 // Texture helpers for the viewer: image loading with downscale, placeholders, label canvases.
 import * as THREE from 'three';
 import type { MediaItem } from '../shared/museum';
+import { openMedia } from './mediaOpener';
 
 export const MAX_TEXTURE = 1600; // paintings (the editor already downsizes uploads to this)
 export const MAX_WALL_TEXTURE = 1024; // wall textures (tiled, so smaller is fine)
@@ -8,14 +9,19 @@ export const LABEL_W = 0.5; // max plaque width, metres
 const LABEL_PX_PER_M = 1024; // label canvas resolution
 const LABEL_MIN_PX = 200;
 
-function loadImage(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.decoding = 'async';
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('image failed to load'));
-    img.src = url;
-  });
+async function loadImage(url: string): Promise<HTMLImageElement> {
+  const opened = await openMedia(url); // sealed museums: decrypted blob: URL, released once the image has loaded
+  try {
+    return await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.decoding = 'async';
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('image failed to load'));
+      img.src = opened.url;
+    });
+  } finally {
+    opened.release();
+  }
 }
 
 /** Load an image as a texture, downscaled so no side exceeds `max`. Mipmaps on. */

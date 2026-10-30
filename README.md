@@ -181,18 +181,52 @@ draw calls, triangles, GPU textures, resident paintings and decoded audio zones.
 To stress-test, `node scripts/make-stress.mjs <outDir>` writes a museum with 90 rooms, 500 works and 90 zones
 into a folder of your choice (it refuses to write into `public/museum`). It includes a few open-sky courtyards.
 
+## Publishing with a password
+The GitHub repo and the Pages site only ever hold an **encrypted** copy of the museum. The plaintext
+stays in `public/museum/` on your computer (it is in `.gitignore`); the editor, the dev server, the
+folder flow and zip import/export keep working on it as before.
+
+1. `npm run seal` encrypts `public/museum/` into `public/sealed/`. It asks for the password (hidden, twice
+   the first time, at least 12 characters), or reads it from the `MUSEUM_PASSWORD` environment variable.
+2. Commit and push `public/sealed/`. Run `npm run seal` again after every editing session; files that did
+   not change stay byte-identical, so git only sees what changed.
+3. Visitors open the site, type the password and the museum decrypts in their browser, one file at a time,
+   just before it is used. Nothing is sent to a server.
+
+- **Changing the password**: `npm run seal -- --rekey` (new salt, everything re-encrypted). Sealing with a
+  wrong password changes nothing and says so.
+- **Remember on this device**: the password screen has a checkbox. It keeps a key (not the password) in the
+  browser; the start screen then offers **Forget password on this device**. After `--rekey`, remembered
+  keys stop working and the password is asked again.
+- **Testing locally**: `npm run dev` and open `https://localhost:5317/?sealed` (without `?sealed` the dev
+  server shows the plaintext), or `npm run build && npm run preview`.
+- `npm run build` removes `dist/museum`, so the plaintext can never end up in the published site, and warns
+  when `public/sealed/` is missing.
+
+Honest limits:
+- There is **one shared password**. Anyone who has it can open the museum and save the pictures and sounds.
+- Pick a **long passphrase**: someone who downloads the encrypted files can guess passwords offline at their
+  own pace. The key derivation is slow on purpose, but a short password will still fall.
+- File names, the number of files and their sizes are visible to everyone; the content is not.
+- Content that was committed before you started sealing **stays in git history** and in any clone or fork.
+  Treat it as public, or start a fresh repository.
+- `public/museum/` is no longer in git, so **back it up yourself** (for example with Export .zip).
+
 ## Deploying to GitHub Pages
-1. Create a GitHub repository and push this project to its `main` branch.
+1. Create a GitHub repository and push this project to its `main` branch, including `public/sealed/`
+   (see "Publishing with a password"). The plaintext `public/museum/` is not pushed.
 2. In the repository: **Settings > Pages > Source: GitHub Actions**.
 3. Every push to `main` runs `.github/workflows/deploy.yml` (tests, build, deploy). The site appears at
    `https://<user>.github.io/<repo>/`. The build uses relative paths, so the sub-path works.
 
-The published site contains the viewer (`index.html`, showing `public/museum/`) and the editor
-(`editor.html`). On the published site the editor always uses the folder flow described under
-"For collaborators": it never writes to the site itself. The dev write API exists only in `npm run dev`.
+The published site contains the viewer (`index.html`, which asks for the password and shows
+`public/sealed/`) and the editor (`editor.html`). On the published site the editor always uses the folder
+flow described under "For collaborators": it never writes to the site itself. The dev write API exists
+only in `npm run dev`.
 
 ## Scripts
 - `npm run dev`: dev server with the editor
 - `npm test`: unit tests
+- `npm run seal`: encrypt `public/museum/` into `public/sealed/` (see "Publishing with a password")
 - `npm run build`: type-check and build the static viewer and editor into `dist/`
 - `npm run preview`: serve `dist/` locally

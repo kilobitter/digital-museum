@@ -34,6 +34,41 @@ export function showAllowAccess(folderName: string, onClick: () => void): void {
   b.onclick = onClick;
 }
 
+/** Asks for the museum password. Resolves on submit (Enter or the button). */
+export function showPassword(name: string | null, error: string | null): Promise<{ password: string; remember: boolean }> {
+  const p = reset();
+  el('h1', name ?? 'This museum is locked', p);
+  el('p', 'Enter the password to open it. It is checked in your browser and never sent anywhere.', p);
+  return new Promise((resolve) => {
+    const form = el('form', undefined, p);
+    form.className = 'pw';
+    const input = el('input', undefined, form);
+    input.type = 'password';
+    input.autocomplete = 'current-password';
+    input.placeholder = 'Password';
+    input.setAttribute('aria-label', 'Password');
+    const row = el('label', undefined, form);
+    row.className = 'remember';
+    const box = el('input', undefined, row);
+    box.type = 'checkbox';
+    el('span', 'Remember on this device', row);
+    const err = el('p', error ?? '', form);
+    err.className = 'pw-error';
+    err.hidden = !error;
+    const btns = el('div', undefined, form);
+    btns.className = 'btns';
+    const go = el('button', 'Open', btns);
+    go.type = 'submit';
+    go.className = 'primary';
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      if (!input.value) return;
+      resolve({ password: input.value, remember: box.checked });
+    };
+    input.focus();
+  });
+}
+
 export function showError(title: string, details: string[] = []): void {
   const p = reset('error');
   el('h1', title, p);
@@ -50,6 +85,8 @@ export interface StartOptions {
   onVR: () => void;
   onDesktop: () => void;
   message?: string;
+  /** Offered when the password was remembered on this device. */
+  onForget?: () => void;
 }
 
 export function showStart(o: StartOptions): void {
@@ -69,6 +106,10 @@ export function showStart(o: StartOptions): void {
   const d = el('button', 'Walk on desktop', btns);
   if (!o.xrSupported) d.className = 'primary';
   d.onclick = o.onDesktop;
+  if (o.onForget) {
+    const f = el('button', 'Forget password on this device', btns);
+    f.onclick = o.onForget;
+  }
 }
 
 export function hideOverlay(): void {
