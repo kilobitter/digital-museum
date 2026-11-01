@@ -46,11 +46,12 @@ function makeSample(): string {
   return out;
 }
 
-const hostPath = join(__dirname, '..', '..', 'public', 'museum', 'museum.json');
+// The host is the sample fixture with its media renamed, so none of its files collide with the guest sample.
+const hostPath = join(__dirname, '..', 'shared', 'fixtures', 'sample-museum.json');
 const loadHost = () => {
   const r = parseMuseum(JSON.parse(readFileSync(hostPath, 'utf8')));
   if (!r.ok) throw new Error('host invalid');
-  return r.museum;
+  return { ...r.museum, media: r.museum.media.map((m) => ({ ...m, file: m.file.replace('media/', 'media/host_') })) };
 };
 
 function fakeStore() {
