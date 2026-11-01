@@ -71,7 +71,7 @@ h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06
 .canvas-wrap svg { display: block; }
 .tool-select { cursor: default; }
 .tool-wall, .tool-room, .tool-door, .tool-zoneRect, .tool-zoneCircle, .tool-spawn, .tool-work { cursor: crosshair; }
-.space { cursor: grab; }
+.space, .tool-pan { cursor: grab; }
 .panning { cursor: grabbing; }
 .grid-minor { stroke: var(--grid-minor); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .grid-major { stroke: var(--grid-major); stroke-width: 1; vector-effect: non-scaling-stroke; }

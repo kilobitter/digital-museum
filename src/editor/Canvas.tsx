@@ -258,7 +258,7 @@ export function Canvas(p: Props) {
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (e.button === 1 || (e.button === 0 && space)) {
+    if (e.button === 1 || (e.button === 0 && (space || tool === 'pan'))) {
       pan.current = { x: e.clientX, y: e.clientY, cx: view.cx, cy: view.cy };
       setPanning(true);
       svgRef.current!.setPointerCapture(e.pointerId);
@@ -446,9 +446,11 @@ export function Canvas(p: Props) {
   const onPointerMove = (e: React.PointerEvent) => {
     const r = svgRef.current!.getBoundingClientRect();
     setCursorPx({ x: e.clientX - r.left, y: e.clientY - r.top });
-    if (pan.current) {
-      const dx = (e.clientX - pan.current.x) / view.scale, dy = (e.clientY - pan.current.y) / view.scale;
-      setView((v) => ({ ...v, cx: pan.current!.cx - dx, cy: pan.current!.cy - dy }));
+    const pn = pan.current;
+    if (pn) {
+      // read the ref now: the updater may run after pointerup has cleared it
+      const cx = pn.cx - (e.clientX - pn.x) / view.scale, cy = pn.cy - (e.clientY - pn.y) / view.scale;
+      setView((v) => ({ ...v, cx, cy }));
       return;
     }
     const pt = toPlan(e);

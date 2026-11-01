@@ -2,14 +2,14 @@
 // neutral placeholder panels (merged into one mesh each). Paintings are streamed in by PaintingStreamer.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { wallDirection, wallLength, workPlacement } from '../shared/geometry';
+import { wallDirection, workPlacement } from '../shared/geometry';
 import type { Finish, MediaItem, Museum, WallFinish } from '../shared/museum';
 import { computeFloorBounds, type Bounds } from './collision';
 import { MAX_WALL_TEXTURE, loadTexture } from './textures';
 import { areaQuads, decomposeCeiling, finishKey, neededTextureIds, surfaceQuad, wallFinishKey } from './surfaces';
 import { buildSky, type SkyDome } from './sky';
 import { applyWallGradient, wallGeometry } from './wallGeometry';
-import { wallEnds } from './wallJoints';
+import { wallEnds, wallSpans } from './wallJoints';
 
 export const FRAME_DEPTH = 0.01; // frame back is flush with the wall face
 export const WORK_OFFSET = FRAME_DEPTH + 0.002; // image/label sit clearly in front of the frame front (~1.2 cm off the wall)
@@ -148,8 +148,8 @@ export async function buildMuseumScene(
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   const ends = wallEnds(museum.walls);
+  const spans = wallSpans(museum.walls, ends, T);
   for (const w of museum.walls) {
-    const len = wallLength(w);
     const d = wallDirection(w);
     const f = effectiveFinish(museum, w);
     const tex = f.textureId ? wallTextures.get(f.textureId) ?? null : null;
@@ -160,16 +160,20 @@ export async function buildMuseumScene(
       wallMats.set(key, entry);
     }
     // Ends at corners and free ends reach T/2 past the end point so corners have no notch; end faces that would
-    // sit in another wall's face plane are left out (see wallJoints.ts) so nothing z-fights.
-    const e = ends.get(w.id)!;
-    const extA = e.a.extend ? T / 2 : 0, extB = e.b.extend ? T / 2 : 0;
-    const geo = wallGeometry(len + extA + extB, H, T, f.tileSize, { start: e.a.cap, end: e.b.cap });
-    if (f.colorTop) applyWallGradient(geo, H, f.color, f.colorTop);
+    // sit in another wall's face plane are left out, and where a later wall lies on top of this one only the later
+    // wall is drawn (see wallJoints.ts), so nothing z-fights.
+    const pieces = spans.get(w.id)!;
+    if (!pieces.length) continue;
+    const lo = pieces[0].from, hi = pieces[pieces.length - 1].to;
     q.setFromAxisAngle(up, -Math.atan2(d.y, d.x));
-    const shift = (extB - extA) / 2; // box centre moves along the wall when the two ends differ
-    m4.compose(new THREE.Vector3((w.a.x + w.b.x) / 2 + d.x * shift, H / 2, (w.a.y + w.b.y) / 2 + d.y * shift), q, new THREE.Vector3(1, 1, 1));
-    geo.applyMatrix4(m4);
-    entry.geos.push(geo);
+    for (const sp of pieces) {
+      const geo = wallGeometry(sp.to - sp.from, H, T, f.tileSize, { start: sp.capFrom, end: sp.capTo }, { front: sp.from - lo, back: hi - sp.to });
+      if (f.colorTop) applyWallGradient(geo, H, f.color, f.colorTop);
+      const mid = (sp.from + sp.to) / 2;
+      m4.compose(new THREE.Vector3(w.a.x + d.x * mid, H / 2, w.a.y + d.y * mid), q, new THREE.Vector3(1, 1, 1));
+      geo.applyMatrix4(m4);
+      entry.geos.push(geo);
+    }
   }
   for (const { mat, geos } of wallMats.values()) {
     const g = merged(geos);

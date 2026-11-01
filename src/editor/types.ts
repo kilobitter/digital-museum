@@ -1,4 +1,4 @@
-export type Tool = 'select' | 'wall' | 'room' | 'door' | 'work' | 'zoneRect' | 'zoneCircle' | 'spawn' | 'areaRect' | 'areaFill';
+export type Tool = 'select' | 'pan' | 'wall' | 'room' | 'door' | 'work' | 'zoneRect' | 'zoneCircle' | 'spawn' | 'areaRect' | 'areaFill';
 
 /** Editing layer: Build = walls, works, zones, spawn; Areas = floor/ceiling areas only. */
 export type Layer = 'build' | 'areas';
@@ -14,8 +14,11 @@ export type Selection =
 
 export interface ToolDef { tool: Tool; key: string; label: string; hint: string; layer: Layer }
 
+const PAN_HINT = 'Drag to move the view; scroll to zoom. With any tool, hold Space or use the middle mouse button to pan.';
+
 export const TOOLS: ToolDef[] = [
   { tool: 'select', key: 'V', label: 'Select', hint: 'Click to select; drag empty space to box-select, Shift adds or removes. Drag to move (groups too), arrows nudge, [ ] rotate, Ctrl/Cmd+D duplicates, Delete removes. Moved walls detach from walls they were joined to.', layer: 'build' },
+  { tool: 'pan', key: 'G', label: 'Hand', hint: PAN_HINT, layer: 'build' },
   { tool: 'wall', key: 'W', label: 'Wall', hint: 'Click to chain walls. Esc or right-click ends the chain.', layer: 'build' },
   { tool: 'room', key: 'R', label: 'Room', hint: 'Drag a rectangle to make four walls.', layer: 'build' },
   { tool: 'door', key: 'D', label: 'Door', hint: 'Hover a wall and click to cut a doorway, through back-to-back walls of neighbouring rooms too. Paintings in the way are taken down (Undo brings them back).', layer: 'build' },
@@ -27,6 +30,7 @@ export const TOOLS: ToolDef[] = [
 
 export const AREA_TOOLS: ToolDef[] = [
   { tool: 'select', key: 'V', label: 'Select', hint: 'Click an area to select it; drag to move, drag a corner to resize; drag empty space to box-select, Shift adds. Delete removes. Ctrl/Cmd+D duplicates.', layer: 'areas' },
+  { tool: 'pan', key: 'G', label: 'Hand', hint: PAN_HINT, layer: 'areas' },
   { tool: 'areaRect', key: 'R', label: 'Rect', hint: 'Drag a rectangle to make a floor/ceiling area. Edges snap to wall centre lines and the grid.', layer: 'areas' },
   { tool: 'areaFill', key: 'F', label: 'Fill room', hint: 'Click inside a room to make an area covering it (bounded by the nearest walls).', layer: 'areas' },
 ];

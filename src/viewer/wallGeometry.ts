@@ -12,6 +12,8 @@ export function wallGeometry(
   thickness: number,
   tileSize: number,
   caps: { start: boolean; end: boolean } = { start: true, end: true },
+  /** metres added to u on the front (+z) and top faces and on the back face, so pieces of one wall tile on seamlessly */
+  uOffset: { front: number; back: number } = { front: 0, back: 0 },
 ): THREE.BufferGeometry {
   const geo = new THREE.BoxGeometry(length, height, thickness);
   const pos = geo.getAttribute('position');
@@ -23,8 +25,8 @@ export function wallGeometry(
     const nx = nrm.getX(i), ny = nrm.getY(i), nz = nrm.getZ(i);
     let u: number, v: number;
     if (Math.abs(nx) > 0.5) { u = nx > 0 ? thickness - z : z; v = y; } // end faces
-    else if (Math.abs(ny) > 0.5) { u = x; v = ny > 0 ? z : thickness - z; } // top / bottom
-    else { u = nz > 0 ? x : length - x; v = y; } // long faces
+    else if (Math.abs(ny) > 0.5) { u = x + uOffset.front; v = ny > 0 ? z : thickness - z; } // top / bottom
+    else { u = nz > 0 ? x + uOffset.front : length - x + uOffset.back; v = y; } // long faces
     uv.setXY(i, u / tileSize, v / tileSize);
   }
   uv.needsUpdate = true;

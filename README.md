@@ -78,7 +78,8 @@ on purpose: if it is taken, the server stops instead of quietly picking another 
   inside is selected; Shift adds to the selection), **Shift+click** adds or removes one item, **Ctrl/Cmd+A**
   selects everything on the current layer, Esc clears. On the Build layer the box picks walls, paintings,
   zones and the spawn point, and, with the **Include areas** option (on by default, remembered), areas.
-  On the Areas layer it picks areas only. Panning stays Space+drag or the middle mouse button.
+  On the Areas layer it picks areas only. To pan, use the **Hand** tool (`G`, on both layers), Space+drag
+  or the middle mouse button.
   - With several items selected, drag any of them to move the whole group (snapped to the grid, one undo
     step); the arrow keys nudge by one grid step (Shift: five; a run of nudges is one undo step).
     Paintings move and turn with their walls. Walls that were joined to a moved wall but are not
