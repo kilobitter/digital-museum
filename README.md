@@ -185,9 +185,9 @@ not meant to be used from the headset.
 ## Large museums on a headset
 The viewer streams: paintings load within about 15 m of the visitor and are released beyond 20 m (at
 most 70 at once), audio loops are fetched and decoded within 10 m of a zone and released beyond 15 m (at
-most 8 at once). Frames, walls and placeholders are merged into a few draw calls, so memory and draw
-calls stay bounded however many works there are. Paintings far away show a plain grey panel until
-they stream in.
+most 8 at once). Frames and walls are merged into a few draw calls, so memory and draw calls stay
+bounded however many works there are. Paintings far away show as a solid dark rectangle until they
+stream in.
 
 Add `?debug` to the viewer URL (for example `https://localhost:5317/?debug`) to show an overlay with
 draw calls, triangles, GPU textures, resident paintings and decoded audio zones.

@@ -1,5 +1,5 @@
-// Builds the static museum geometry: floor, ceiling, walls (merged per material), frames and
-// neutral placeholder panels (merged into one mesh each). Paintings are streamed in by PaintingStreamer.
+// Builds the static museum geometry: floor, ceiling, walls (merged per material) and frames
+// (merged into one mesh). Paintings are streamed in by PaintingStreamer.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { wallDirection, workPlacement } from '../shared/geometry';
@@ -14,7 +14,6 @@ import { wallHeightProfile } from '../shared/roomHeights';
 
 export const FRAME_DEPTH = 0.01; // frame back is flush with the wall face
 export const WORK_OFFSET = FRAME_DEPTH + 0.002; // image/label sit clearly in front of the frame front (~1.2 cm off the wall)
-const PANEL_OFFSET = FRAME_DEPTH + 0.0005; // neutral panel, just behind the image
 const FLOOR_MARGIN = 2;
 
 /** Everything the streamer needs to show one work. */
@@ -192,11 +191,11 @@ export async function buildMuseumScene(
     if (g) group.add(new THREE.Mesh(g, mat));
   }
 
-  // Frames and placeholder panels of every work: one mesh each, always visible.
+  // Frames of every work: one mesh, always visible. Each is a solid box the full size of the work, so a painting
+  // that isn't loaded is a plain dark rectangle (no second surface a hair in front of it to flicker at a distance).
   const wallById = new Map(museum.walls.map((w) => [w.id, w]));
   const slots: PaintingSlot[] = [];
   const frameGeos: THREE.BufferGeometry[] = [];
-  const panelGeos: THREE.BufferGeometry[] = [];
   const one = new THREE.Vector3(1, 1, 1);
   for (const work of museum.works) {
     const wall = wallById.get(work.wallId);
@@ -214,16 +213,12 @@ export async function buildMuseumScene(
     frame.translate(0, 0, FRAME_DEPTH / 2);
     frame.applyMatrix4(m4);
     frameGeos.push(frame);
-    const panel = new THREE.PlaneGeometry(w, h);
-    panel.translate(0, 0, PANEL_OFFSET);
-    panel.applyMatrix4(m4);
-    panelGeos.push(panel);
     slots.push({ id: work.id, media, w, h, position, rotationY, x: center.x, y: center.y });
   }
   const frames = merged(frameGeos);
-  if (frames) group.add(new THREE.Mesh(frames, new THREE.MeshBasicMaterial({ color: 0x1a1a1a })));
-  const panels = merged(panelGeos);
-  if (panels) group.add(new THREE.Mesh(panels, new THREE.MeshBasicMaterial({ color: 0xd9d9d9 })));
+  // The bias is in depth-buffer steps: it keeps a distant frame (1 cm off the wall) from flickering against the wall, and
+  // stays well under WORK_OFFSET's 2 mm image gap at the distances where paintings are loaded (under 1 mm at 20 m).
+  if (frames) group.add(new THREE.Mesh(frames, new THREE.MeshBasicMaterial({ color: 0x1a1a1a, polygonOffset: true, polygonOffsetUnits: -2 })));
 
   return { group, bounds, warnings, slots, sky };
 }
