@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Wall } from '../shared/museum';
-import { wallEnds, wallSpans } from './wallJoints';
+import { wallHeightProfile, type WallHeightPiece } from '../shared/roomHeights';
+import { defaultMuseum } from '../shared/validate';
+import { wallEnds, wallPieces, wallSpans } from './wallJoints';
 
 const w = (id: string, ax: number, ay: number, bx: number, by: number): Wall => ({ id, a: { x: ax, y: ay }, b: { x: bx, y: by } });
 const FREE = { extend: true, cap: true };
@@ -96,5 +98,89 @@ describe('wallSpans', () => {
   it('walls that only touch end to end, or run parallel a little apart, are left alone', () => {
     expect(spans([w('l', 0, 0, 3, 0), w('r', 3, 0, 7, 0)])('l')).toEqual([{ from: -0.1, to: 3, capFrom: true, capTo: false }]);
     expect(spans([w('a', 0, 0, 5, 0), w('b', 0, 0.3, 5, 0.3)])('a')).toEqual([{ from: -0.1, to: 5.1, capFrom: true, capTo: true }]);
+  });
+});
+
+describe('wallPieces', () => {
+  const T = 0.2;
+  const prof = (...tops: [number, number, number][]): WallHeightPiece[] => tops.map(([from, to, top]) => ({ from, to, plus: top, minus: top, top }));
+  const build = (walls: Wall[], profiles: Record<string, WallHeightPiece[]>) => {
+    const spans = wallSpans(walls, wallEnds(walls), T);
+    return { spans, pieces: wallPieces(walls, spans, new Map(Object.entries(profiles)), T) };
+  };
+
+  it('legacy: with no roomHeight the pieces equal the spans, no steps', () => {
+    const m = defaultMuseum();
+    m.walls = [w('1', 0, 0, 4, 0), w('2', 4, 0, 4, 3), w('3', 4, 3, 0, 3), w('4', 0, 3, 0, 0), w('5', 0, 1, 2, 1), w('6', 1, 1, 1, 2), w('7', 5, 0, 9, 0), w('8', 6, 0, 8, 0)];
+    const ends = wallEnds(m.walls);
+    const spans = wallSpans(m.walls, ends, T);
+    const profiles = new Map(m.walls.map((x) => [x.id, wallHeightProfile(m, x)]));
+    const pieces = wallPieces(m.walls, spans, profiles, T);
+    for (const x of m.walls) expect(pieces.get(x.id)).toEqual(spans.get(x.id)!.map((sp) => ({ ...sp, top: 3, stepFrom: null, stepTo: null })));
+  });
+
+  it('a break inside a wall: the taller piece gets a step starting at the shorter top, no caps at the cut', () => {
+    const walls = [w('a', 0, 0, 10, 0)];
+    const { pieces } = build(walls, { a: prof([0, 4, 3], [4, 10, 5]) });
+    const p = pieces.get('a')!;
+    expect(p).toHaveLength(2);
+    expect(p[0]).toMatchObject({ from: -0.1, to: 4, top: 3, capFrom: true, capTo: false, stepFrom: null, stepTo: null });
+    expect(p[1]).toMatchObject({ from: 4, to: 10.1, top: 5, capFrom: false, capTo: true, stepFrom: 3, stepTo: null });
+    const q = build(walls, { a: prof([0, 4, 5], [4, 10, 3]) }).pieces.get('a')!;
+    expect(q[0]).toMatchObject({ top: 5, stepTo: 3, stepFrom: null });
+    expect(q[1]).toMatchObject({ top: 3, stepFrom: null });
+  });
+
+  it('extensions inherit the nearest piece height', () => {
+    const walls = [w('a', 0, 0, 10, 0)];
+    const p = build(walls, { a: prof([0, 4, 3], [4, 10, 5]) }).pieces.get('a')!;
+    expect(p[0].from).toBeLessThan(0);
+    expect(p[0].top).toBe(3);
+    expect(p[1].to).toBeGreaterThan(10);
+    expect(p[1].top).toBe(5);
+  });
+
+  it('free ends keep full caps and get no step', () => {
+    const p = build([w('a', 0, 0, 10, 0)], { a: prof([0, 10, 5]) }).pieces.get('a')!;
+    expect(p[0]).toMatchObject({ capFrom: true, capTo: true, stepFrom: null, stepTo: null });
+  });
+
+  it('a lower straight-joined neighbour: the end of the taller wall gets a step from the neighbour height', () => {
+    const walls = [w('l', 0, 0, 3, 0), w('r', 3, 0, 7, 0)];
+    const { pieces } = build(walls, { l: prof([0, 3, 5]), r: prof([0, 4, 3]) });
+    expect(pieces.get('l')![0]).toMatchObject({ capTo: false, stepTo: 3, stepFrom: null });
+    expect(pieces.get('r')![0]).toMatchObject({ capFrom: false, stepFrom: null });
+  });
+
+  it('a taller neighbour needs no step', () => {
+    const walls = [w('l', 0, 0, 3, 0), w('r', 3, 0, 7, 0)];
+    const { pieces } = build(walls, { l: prof([0, 3, 3]), r: prof([0, 4, 5]) });
+    expect(pieces.get('l')![0].stepTo).toBeNull();
+    expect(pieces.get('r')![0].stepFrom).toBe(3);
+  });
+
+  it('a lower corner neighbour: the taller wall steps down at the corner', () => {
+    const walls = [w('h', 0, 0, 5, 0), w('v', 5, 0, 5, 4)];
+    const { pieces } = build(walls, { h: prof([0, 5, 5]), v: prof([0, 4, 3]) });
+    expect(pieces.get('h')![0]).toMatchObject({ capTo: false, stepTo: 3 });
+    expect(pieces.get('v')![0]).toMatchObject({ capFrom: false, stepFrom: null });
+  });
+
+  it('a T-junction: the branch steps from the lowest top of the cross wall around the junction', () => {
+    const walls = [w('c', 0, 0, 10, 0), w('s', 5, 0, 5, 4)];
+    // cross wall is 3 m up to x=5, 5 m after; the branch is 5 m tall
+    const { pieces } = build(walls, { c: prof([0, 5, 3], [5, 10, 5]), s: prof([0, 4, 5]) });
+    expect(pieces.get('s')![0]).toMatchObject({ capFrom: false, stepFrom: 3 });
+    const tall = build(walls, { c: prof([0, 10, 5]), s: prof([0, 4, 5]) }).pieces.get('s')![0];
+    expect(tall.stepFrom).toBeNull();
+  });
+
+  it('a cut end left open by overlap handling gets no step', () => {
+    const walls = [w('a', 0, 0, 10, 0), w('b', 4, 0, 6, 0)];
+    const { pieces } = build(walls, { a: prof([0, 10, 3]), b: prof([0, 2, 5]) });
+    const a = pieces.get('a')!;
+    expect(a).toHaveLength(2);
+    expect(a[0].stepTo).toBeNull();
+    expect(a[1].stepFrom).toBeNull();
   });
 });

@@ -64,6 +64,18 @@ on purpose: if it is taken, the server stops instead of quietly picking another 
     needs at least one of floor, ceiling finish or open sky. Open-sky areas are drawn with a blue hatch
     on the blueprint and tagged `O` (for example `F+O`).
   - Ceiling settings only show when the ceiling is switched on in the museum settings.
+  - **Room height**: tick it to give an area its own height (the museum setting "Default room height"
+    applies everywhere else). The ceiling there sits at that height and walls follow the rooms on both
+    sides: a wall reaches the taller of the two, and one wall that crosses several areas changes height
+    along its length. Where two ceilings of different height meet, a vertical strip closes the gap
+    (it is skipped where a wall already covers it, and next to open sky or when ceilings are off, since
+    there is no ceiling to close). The strip has the lower ceiling's finish, so a doorway between a low
+    and a tall room shows it above the door, seen from the tall room. Under open sky, or with ceilings
+    off, the height only sets the walls. Like the finishes, the top-most area with a room height wins
+    where areas overlap. An area's blueprint tag includes its height (for example `F+C+5 m`), and an
+    area with only a height is grey on the blueprint.
+    Paintings keep their absolute height; the editor warns when one reaches above the room on its side
+    of the wall.
 - **Sky**: set in the museum settings. It is what you see beyond the walls and through open-sky areas.
   - *Gradient*: three colours (top, horizon, bottom), blended smoothly around the horizon.
   - *Panorama*: an equirectangular image from the Panoramas tab, plus a rotation (-180 to 180 degrees,
@@ -136,11 +148,12 @@ or a .zip of it. You put them together in your own museum:
 3. **Place it**: drag the selection, use the arrow keys, and press `[` and `]` to rotate. Then use the
    **Door** tool to cut a doorway where their rooms should connect to yours.
 
-What is kept from each side: from **your** museum the name, wall height and thickness, grid, default
-finishes, sky, start point and ceilings. From **their** museum the plan and the look: walls without their
-own finish get their default wall finish, and when their floor or ceiling differed (or they had no
-ceilings) an area named "<their name> (base)" is added over their rooms so it looks the same. A note lists
-anything that did not fit, such as paintings taller than your walls or files missing from their folder.
+What is kept from each side: from **your** museum the name, wall thickness, grid, default room height,
+default finishes, sky, start point and ceilings. From **their** museum the plan and the look: walls without
+their own finish get their default wall finish, and when their floor, ceiling or room height differed (or
+they had no ceilings) an area named "<their name> (base)" is added over their rooms so it looks the same;
+their rooms keep their height through its room height. A note lists anything that did not fit, such as
+paintings taller than their room or files missing from their folder.
 Their sky and start point are not used.
 
 Importing is a one-time copy: nothing stays linked to their folder (which is never written to), and

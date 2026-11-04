@@ -20,13 +20,13 @@ export interface Vec2 {
 }
 
 export interface MuseumSettings {
-  /** Wall height in metres. Default 3. */
+  /** Default room height in metres: walls and ceiling wherever no area sets `roomHeight`. Default 3. */
   wallHeight: number;
   /** Wall thickness in metres. Default 0.2. Walls are centred on their segment. */
   wallThickness: number;
   /** Editor snap grid in metres. Default 0.5. Viewer ignores it. */
   gridSize: number;
-  /** Render a ceiling at wallHeight over the floor area. Default true. */
+  /** Render a ceiling over the floor area, at wallHeight or an area's `roomHeight`. Default true. */
   ceiling: boolean;
   /** Finish for every wall without its own `finish`. Default { color: '#ffffff', tileSize: 1 }. */
   wallFinish: WallFinish;
@@ -67,7 +67,7 @@ export type Sky =
 /** Kept for readability at wall call sites. */
 /**
  * Walls only: optional vertical gradient. With `colorTop`, the colour runs from `color` at the floor to
- * `colorTop` at the top of the wall (wallHeight); still multiplied with the texture when there is one.
+ * `colorTop` at the wall's highest point; still multiplied with the texture when there is one.
  * No rotation: always bottom → top. Omit for a uniform colour. Additive in v4 (no version bump).
  */
 export interface WallFinish extends Finish {
@@ -82,6 +82,9 @@ export interface WallFinish extends Finish {
  * Stacking: later entries in `Museum.areas` win over earlier ones where they overlap — for the
  * ceiling this decides per spot between base ceiling, an area's ceiling finish, or open sky.
  * An area with only `floor` doesn't affect the ceiling.
+ * `roomHeight` stacks independently of the finish: per spot, the top-most area that sets `roomHeight`
+ * decides the height, and the top-most area with `ceiling`/`openSky` decides the finish or open sky.
+ * Additive in v4 (no version bump).
  */
 export interface Area {
   id: string;
@@ -92,6 +95,11 @@ export interface Area {
   ceiling?: Finish;
   /** No ceiling inside this rect (the sky shows). */
   openSky?: true;
+  /**
+   * Metres, > 0. Height of the ceiling here (or, under open sky or with `settings.ceiling` off, only of the walls
+   * here); settings.wallHeight applies where no area sets it. A wall reaches the taller of the rooms on its two sides.
+   */
+  roomHeight?: number;
 }
 
 export interface Wall {

@@ -1,5 +1,6 @@
 // Pure merge of a guest museum into the host museum (one-time copy). No React, no DOM.
 import type { Area, AudioZone, Finish, MediaItem, Museum, Vec2, Wall, WallFinish, Work } from '../shared/museum';
+import { wallSideHeight } from '../shared/roomHeights';
 import { newId, round4, snapValue } from './model';
 import { EMPTY_SEL, type MultiSel } from './multiSelect';
 
@@ -140,6 +141,7 @@ export function mergeMuseum(host: Museum, guest: Museum, media: ReadonlyMap<stri
   const bakeWall = !sameFinish(gWall, host.settings.wallFinish);
   const ceilingsOff = guest.settings.ceiling === false && host.settings.ceiling;
   const bakeFloor = !sameFinish(gFloor, host.settings.floorFinish);
+  const heightDiffers = guest.walls.length > 0 && Math.abs(guest.settings.wallHeight - host.settings.wallHeight) > 1e-6;
   const bakeCeil = !ceilingsOff && host.settings.ceiling && guest.settings.ceiling && !sameFinish(gCeil, host.settings.ceilingFinish);
 
   const out: MultiSel = { ...EMPTY_SEL, walls: [], works: [], zones: [], areas: [] };
@@ -164,6 +166,7 @@ export function mergeMuseum(host: Museum, guest: Museum, media: ReadonlyMap<stri
   const works: Work[] = [];
   const guestMediaById = new Map(guest.media.map((x) => [x.id, x]));
   const droppedWorks: string[] = [];
+  const reach: { workId: string; label: string; top: number }[] = []; // checked against the merged museum below
   for (const k of guest.works) {
     const wallId = wallMap.get(k.wallId);
     const mediaId = idMap.get(k.mediaId);
@@ -178,8 +181,7 @@ export function mergeMuseum(host: Museum, guest: Museum, media: ReadonlyMap<stri
     works.push({ ...k, id, wallId, mediaId });
     const h = item?.width && item.height ? (k.width * item.height) / item.width : k.width;
     const top = k.centerHeight + h / 2;
-    if (top > host.settings.wallHeight + 1e-6)
-      warnings.push(`"${item?.title || item?.name || k.id}" reaches ${mm(top)}, above your ${mm(host.settings.wallHeight)} walls.`);
+    reach.push({ workId: id, label: item?.title || item?.name || k.id, top });
   }
   if (droppedWorks.length) warnings.push(`${droppedWorks.length} painting${droppedWorks.length === 1 ? '' : 's'} left out because the image file is missing: ${droppedWorks.slice(0, 4).join(', ')}${droppedWorks.length > 4 ? ', …' : ''}.`);
 
@@ -216,7 +218,7 @@ export function mergeMuseum(host: Museum, guest: Museum, media: ReadonlyMap<stri
   const areas: Area[] = [];
   if (!planEmpty) {
     const base: Area | null = (() => {
-      if (!guest.walls.length || !(bakeFloor || bakeCeil || ceilingsOff)) return null;
+      if (!guest.walls.length || !(bakeFloor || bakeCeil || ceilingsOff || heightDiffers)) return null;
       const xs = guest.walls.flatMap((w) => [w.a.x, w.b.x]);
       const ys = guest.walls.flatMap((w) => [w.a.y, w.b.y]);
       let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
@@ -225,6 +227,7 @@ export function mergeMuseum(host: Museum, guest: Museum, media: ReadonlyMap<stri
       const p = sh({ x: x0, y: y0 });
       const a: Area = { id: '', name: `${guestName} (base)`, rect: { x: p.x, y: p.y, w: round4(x1 - x0), h: round4(y1 - y0) } };
       if (bakeFloor) a.floor = { ...gFloor };
+      if (heightDiffers) a.roomHeight = guest.settings.wallHeight;
       if (ceilingsOff) a.openSky = true;
       else if (bakeCeil) a.ceiling = { ...gCeil };
       return a;
@@ -236,7 +239,8 @@ export function mergeMuseum(host: Museum, guest: Museum, media: ReadonlyMap<stri
       if (a.floor) next.floor = remapFinish(a.floor);
       if (a.ceiling && !ceilingsOff) next.ceiling = remapFinish(a.ceiling);
       if (a.openSky) next.openSky = true;
-      if (!next.floor && !next.ceiling && !next.openSky) continue; // only had an (invisible) ceiling
+      if (a.roomHeight !== undefined) next.roomHeight = a.roomHeight;
+      if (!next.floor && !next.ceiling && !next.openSky && next.roomHeight === undefined) continue; // only had an (invisible) ceiling
       list.push(next);
     }
     for (const a of list) {
@@ -251,8 +255,8 @@ export function mergeMuseum(host: Museum, guest: Museum, media: ReadonlyMap<stri
 
   // ---- warnings about differing settings ----
   if (guest.walls.length) {
-    if (Math.abs(guest.settings.wallHeight - host.settings.wallHeight) > 1e-6)
-      warnings.push(`Their walls were ${mm(guest.settings.wallHeight)} high, yours are ${mm(host.settings.wallHeight)}. The imported walls now use yours.`);
+    if (heightDiffers)
+      warnings.push(`Info: their rooms are ${mm(guest.settings.wallHeight)} high, yours are ${mm(host.settings.wallHeight)}. The imported rooms keep their height through the area "${guestName} (base)".`);
     if (Math.abs(guest.settings.wallThickness - host.settings.wallThickness) > 1e-6)
       warnings.push(`Info: their walls were ${mm(guest.settings.wallThickness)} thick, yours are ${mm(host.settings.wallThickness)}.`);
   }
@@ -265,6 +269,13 @@ export function mergeMuseum(host: Museum, guest: Museum, media: ReadonlyMap<stri
     areas: [...host.areas, ...areas],
     media: [...host.media, ...newMedia],
   };
+  // Paintings that reach above the room they hang in (the room on their own side of the wall, in the merged museum).
+  for (const r of reach) {
+    const work = museum.works.find((x) => x.id === r.workId)!;
+    const wall = museum.walls.find((x) => x.id === work.wallId)!;
+    const room = wallSideHeight(museum, wall, work.side, work.t - work.width / 2, work.t + work.width / 2);
+    if (r.top > room + 1e-6) warnings.push(`"${r.label}" reaches ${mm(r.top)}, above the ${mm(room)} room.`);
+  }
   return {
     museum,
     selection: out,

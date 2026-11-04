@@ -1,6 +1,7 @@
 // How each wall end meets its neighbours, so corners close without coplanar (flickering) faces.
 import { closestPointOnSegment, wallDirection, wallLength } from '../shared/geometry';
 import type { Vec2, Wall } from '../shared/museum';
+import { wallTopAt, type WallHeightPiece } from '../shared/roomHeights';
 
 /** extend: the box reaches half a thickness past the end point; cap: the end face is drawn. */
 export interface WallEnd {
@@ -93,5 +94,96 @@ export function wallSpans(walls: readonly Wall[], ends: Map<string, { a: WallEnd
     }
     out.set(w.id, spans);
   });
+  return out;
+}
+
+/** A drawn piece of a wall box with its own height. `stepFrom`/`stepTo`: a partial end face from that height up to `top`. */
+export interface WallPiece extends WallSpan {
+  top: number;
+  stepFrom: number | null;
+  stepTo: number | null;
+}
+
+const COVER_EPS = 1e-6;
+
+/** Height that other walls already hide at point `p` (a free-of-cap end of `w`), or null when no wall joins there. */
+function coverAt(w: Wall, p: Vec2, walls: readonly Wall[], profiles: Map<string, WallHeightPiece[]>, thickness: number): number | null {
+  let cover: number | null = null;
+  const raise = (h: number) => { cover = cover === null ? h : Math.max(cover, h); };
+  for (const o of walls) {
+    if (o === w || wallLength(o) === 0 || overlaps(w, o)) continue;
+    const prof = profiles.get(o.id);
+    if (!prof) continue;
+    const aHit = Math.hypot(o.a.x - p.x, o.a.y - p.y) <= JOIN_EPS, bHit = Math.hypot(o.b.x - p.x, o.b.y - p.y) <= JOIN_EPS;
+    if (aHit || bHit) {
+      raise(wallTopAt(prof, aHit ? 0 : wallLength(o)));
+      continue;
+    }
+    const c = closestPointOnSegment(p, o.a, o.b);
+    if (c.dist <= JOIN_EPS) {
+      const lo = c.t - thickness / 2, hi = c.t + thickness / 2;
+      let low = wallTopAt(prof, c.t);
+      for (const q of prof) if (q.to > lo && q.from < hi) low = Math.min(low, q.top);
+      raise(low);
+    }
+  }
+  return cover;
+}
+
+/**
+ * Splits each wall's drawn spans (see wallSpans) at the height profile's breaks and gives every piece its height.
+ * Extensions past the wall's ends take the nearest piece's height. Where a piece is taller than what hides its side
+ * (the neighbouring piece inside the wall, or the wall it joins at a corner, straight joint or T), it gets a partial
+ * end face from that height up, so no hole shows. Ends cut by overlap handling stay open.
+ */
+export function wallPieces(
+  walls: readonly Wall[],
+  spans: Map<string, WallSpan[]>,
+  profiles: Map<string, WallHeightPiece[]>,
+  thickness: number,
+): Map<string, WallPiece[]> {
+  const ends = wallEnds(walls);
+  const out = new Map<string, WallPiece[]>();
+  for (const w of walls) {
+    const prof = profiles.get(w.id)!;
+    const len = wallLength(w);
+    const e = ends.get(w.id)!;
+    const startFrom = -(e.a.extend ? thickness / 2 : 0), endTo = len + (e.b.extend ? thickness / 2 : 0);
+    const pieces: WallPiece[] = [];
+    for (const sp of spans.get(w.id) ?? []) {
+      const cuts = [sp.from];
+      // breaks between profile pieces (not the wall's ends: extensions take the nearest piece's height)
+      for (const q of prof.slice(0, -1)) if (q.to > sp.from + 1e-9 && q.to < sp.to - 1e-9) cuts.push(q.to);
+      cuts.sort((p, q) => p - q);
+      cuts.push(sp.to);
+      const part: WallPiece[] = [];
+      for (let i = 0; i + 1 < cuts.length; i++) {
+        const mid = (cuts[i] + cuts[i + 1]) / 2;
+        part.push({
+          from: cuts[i], to: cuts[i + 1], top: wallTopAt(prof, mid),
+          capFrom: i === 0 ? sp.capFrom : false, capTo: i + 2 === cuts.length ? sp.capTo : false,
+          stepFrom: null, stepTo: null,
+        });
+      }
+      // steps inside the span: the taller side of each height break
+      for (let i = 0; i + 1 < part.length; i++) {
+        const p = part[i], n = part[i + 1];
+        if (n.top > p.top + COVER_EPS) n.stepFrom = p.top;
+        else if (p.top > n.top + COVER_EPS) p.stepTo = n.top;
+      }
+      // true wall ends without a full cap
+      const first = part[0], last = part[part.length - 1];
+      if (first && !first.capFrom && Math.abs(sp.from - startFrom) < 1e-9) {
+        const cover = coverAt(w, w.a, walls, profiles, thickness);
+        if (cover !== null && first.top > cover + COVER_EPS) first.stepFrom = cover;
+      }
+      if (last && !last.capTo && Math.abs(sp.to - endTo) < 1e-9) {
+        const cover = coverAt(w, w.b, walls, profiles, thickness);
+        if (cover !== null && last.top > cover + COVER_EPS) last.stepTo = cover;
+      }
+      pieces.push(...part);
+    }
+    out.set(w.id, pieces);
+  }
   return out;
 }

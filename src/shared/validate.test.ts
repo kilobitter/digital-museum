@@ -382,6 +382,22 @@ describe('format v4', () => {
     const m = withPano(); m.version = 3; delete m.settings.sky;
     expectError(m, 'media[3].kind');
   });
+  it('areas: roomHeight is a positive number and can stand alone', () => {
+    const h = (v: unknown): Any => ({ id: 'h', name: 'Hall', rect: { x: 0, y: 0, w: 2, h: 2 }, roomHeight: v });
+    let m = base(); m.areas = [h(5)];
+    const r = parseMuseum(m);
+    expect(r.ok ? [] : r.errors).toEqual([]);
+    expect(r.ok && r.museum.areas[0].roomHeight).toBe(5);
+    expect(r.ok && JSON.parse(JSON.stringify(r.museum.areas[0]))).toEqual(h(5));
+    for (const bad of [0, -1, '5', null, NaN]) {
+      m = base(); m.areas = [h(bad)];
+      expectError(m, 'areas[0].roomHeight');
+    }
+    m = base(); m.areas = [{ ...h(4), floor: { color: '#112233', tileSize: 1 } }];
+    expect(errorsOf(m)).toEqual([]);
+    m = base(); m.areas = [{ id: 'x', name: '', rect: { x: 0, y: 0, w: 1, h: 1 } }];
+    expectError(m, 'roomHeight');
+  });
   it('areas: openSky alone is enough, must be true, excludes ceiling', () => {
     const o = (): Any => ({ id: 'o', name: 'Yard', rect: { x: 0, y: 0, w: 2, h: 2 }, openSky: true });
     let m = base(); m.areas = [o()];

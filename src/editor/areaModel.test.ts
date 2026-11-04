@@ -212,3 +212,41 @@ describe('ceiling modes and sky', () => {
     expect(removeMedia(free, p.id)).not.toBeNull();
   });
 });
+
+describe('room height', () => {
+  const fin = { color: '#112233', tileSize: 1 };
+  const withArea = () => {
+    const r = addArea(defaultMuseum(), { x: 0, y: 0, w: 4, h: 4 })!;
+    return { m: r.museum, id: r.id };
+  };
+  it('updateArea sets and removes roomHeight', () => {
+    const { m, id } = withArea();
+    const set = updateArea(m, id, { roomHeight: 5 });
+    expect(set.areas[0].roomHeight).toBe(5);
+    const cleared = updateArea(set, id, { roomHeight: undefined });
+    expect('roomHeight' in cleared.areas[0]).toBe(false);
+  });
+  it('ceiling None is allowed without a floor when the area has a roomHeight', () => {
+    const { m, id } = withArea();
+    const noFloor = updateArea(updateArea(setCeilingMode(m, id, 'finish', fin), id, { floor: undefined }), id, { roomHeight: 5 });
+    const none = setCeilingMode(noFloor, id, 'none', fin);
+    expect(none).not.toBe(noFloor);
+    expect(none.areas[0].ceiling).toBeUndefined();
+    expect(none.areas[0].roomHeight).toBe(5);
+    const open = updateArea(setCeilingMode(m, id, 'open', fin), id, { floor: undefined });
+    expect(setCeilingMode(open, id, 'none', fin)).toBe(open);
+  });
+  it('areaTag appends the height', () => {
+    const { m, id } = withArea();
+    const x = updateArea(setCeilingMode(m, id, 'finish', fin), id, { roomHeight: 5 });
+    expect(areaTag(x.areas[0])).toBe('F+C+5 m');
+    expect(areaTag({ id: 'h', name: '', rect: { x: 0, y: 0, w: 1, h: 1 }, roomHeight: 2.5 })).toBe('2.5 m');
+  });
+  it('duplicateArea keeps roomHeight and the result parses', () => {
+    const { m, id } = withArea();
+    const x = updateArea(m, id, { roomHeight: 5 });
+    const d = duplicateArea(x, id)!;
+    expect(d.museum.areas[1].roomHeight).toBe(5);
+    expect(parseMuseum(JSON.parse(JSON.stringify(d.museum))).ok).toBe(true);
+  });
+});

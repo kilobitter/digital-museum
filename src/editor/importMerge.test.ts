@@ -316,15 +316,46 @@ describe('placement', () => {
 });
 
 describe('warnings', () => {
-  it('reports differing wall height and thickness, and works that are too tall', () => {
+  it('reports differing wall height and thickness; paintings are checked against their own room', () => {
     const g = guest();
     g.settings = { ...g.settings, wallHeight: 4.5, wallThickness: 0.3 };
-    g.works[0] = { ...g.works[0], centerHeight: 3, width: 2 }; // gm1 is 2:1 -> 1 m high -> top 3.5 > 3
+    g.works[0] = { ...g.works[0], centerHeight: 3, width: 2 }; // gm1 is 2:1 -> 1 m high -> top 3.5, fits the guest's 4.5 m
     const r = mergeMuseum(host(), g, allFiles(g));
-    expect(r.warnings.some((w) => w.includes('Their walls were 4.5 m high, yours are 3 m'))).toBe(true);
+    expect(r.warnings.some((w) => w.includes('Info: their rooms are 4.5 m high, yours are 3 m. The imported rooms keep their height through the area'))).toBe(true);
     expect(r.warnings.some((w) => w.includes('0.3 m thick'))).toBe(true);
-    expect(r.warnings.some((w) => w.includes('"One" reaches 3.5 m'))).toBe(true);
+    expect(r.warnings.some((w) => w.includes('reaches'))).toBe(false);
     expect(run().warnings).toEqual([]);
+  });
+
+  it('a painting taller than the guest\'s own height still warns', () => {
+    const g = guest();
+    g.settings = { ...g.settings, wallHeight: 4.5 };
+    g.works[0] = { ...g.works[0], centerHeight: 4.2, width: 2 }; // top 4.7 > 4.5
+    const r = mergeMuseum(host(), g, allFiles(g));
+    expect(r.warnings.some((w) => w.includes('"One" reaches 4.7 m, above the 4.5 m room.'))).toBe(true);
+  });
+});
+
+describe('room heights', () => {
+  it('a different wall height alone creates the base area with roomHeight', () => {
+    const g = guest();
+    g.settings = { ...g.settings, wallHeight: 5 };
+    const r = mergeMuseum(host(), g, allFiles(g));
+    const base = r.museum.areas.find((a) => a.name.endsWith('(base)'))!;
+    expect(base).toBeTruthy();
+    expect(base.roomHeight).toBe(5);
+    expect(base.floor).toBeUndefined();
+    expect(r.selection.areas).toContain(base.id);
+  });
+  it('the same wall height creates no base area for height', () => {
+    const r = run();
+    expect(r.museum.areas.find((a) => a.roomHeight !== undefined)).toBeUndefined();
+  });
+  it('guest areas keep their roomHeight, even when they have nothing else', () => {
+    const g = guest();
+    g.areas = [{ id: 'h', name: 'Hall', rect: { x: 0, y: 0, w: 4, h: 4 }, roomHeight: 6 }];
+    const r = mergeMuseum(host(), g, allFiles(g));
+    expect(r.museum.areas.filter((a) => a.name === 'Hall')[0]?.roomHeight).toBe(6);
   });
 });
 

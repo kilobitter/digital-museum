@@ -682,7 +682,8 @@ export function Canvas(p: Props) {
   const fillPreview = layer === 'areas' && tool === 'areaFill' && cursor ? fillRoom(m, cursor) : null;
   const selArea = selection?.type === 'area' ? findArea(m, selection.id) : undefined;
   const patterns = new Map<string, { id: string; href: string; tile: number }>();
-  const areaFace = (a: (typeof m.areas)[number]) => a.floor ?? a.ceiling ?? { color: SKY_BLUE, tileSize: 1 };
+  const HEIGHT_ONLY_GREY = '#a8a8a8';
+  const areaFace = (a: (typeof m.areas)[number]) => a.floor ?? a.ceiling ?? { color: a.openSky ? SKY_BLUE : HEIGHT_ONLY_GREY, tileSize: 1 }; // a height-only area is neutral grey
   for (const a of m.areas) {
     const f = areaFace(a);
     const media = f.textureId ? m.media.find((x) => x.id === f.textureId && x.kind === 'texture') : undefined;

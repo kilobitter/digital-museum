@@ -273,7 +273,9 @@ export function Inspector({ museum: m, mediaUrl, selection, selectedMediaId, onC
     const idx = m.areas.findIndex((x) => x.id === a.id);
     const last = m.areas.length - 1;
     const order = (how: Reorder) => onChange(reorderArea(m, a.id, how));
-    const floorOnlyHere = a.ceiling === undefined && !a.openSky;
+    const hasHeight = a.roomHeight !== undefined;
+    const floorOnlyHere = a.ceiling === undefined && !a.openSky && !hasHeight;
+    const heightOnlyHere = !a.floor && a.ceiling === undefined && !a.openSky;
     const floorRow = (
       <div className="finish">
         <label className="check">
@@ -281,7 +283,7 @@ export function Inspector({ museum: m, mediaUrl, selection, selectedMediaId, onC
             type="checkbox"
             checked={a.floor !== undefined}
             disabled={a.floor !== undefined && floorOnlyHere}
-            title={a.floor !== undefined && floorOnlyHere ? 'An area needs a floor finish, a ceiling finish or open sky' : ''}
+            title={a.floor !== undefined && floorOnlyHere ? 'An area needs a floor finish, a ceiling finish, open sky or a room height' : ''}
             onChange={(e) => onChange(updateArea(m, a.id, { floor: e.target.checked ? { ...m.settings.floorFinish } : undefined }))}
           />
           Floor
@@ -289,9 +291,29 @@ export function Inspector({ museum: m, mediaUrl, selection, selectedMediaId, onC
         {a.floor && <FinishFields finish={a.floor} museum={m} keyPrefix={k('floor')} onChange={(nf, key) => onChange(updateArea(m, a.id, { floor: nf }), key)} />}
       </div>
     );
+    const heightRow = (
+      <div className="finish">
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={hasHeight}
+            disabled={hasHeight && heightOnlyHere}
+            title={hasHeight && heightOnlyHere ? 'An area needs a floor finish, a ceiling finish, open sky or a room height' : ''}
+            onChange={(e) => onChange(updateArea(m, a.id, { roomHeight: e.target.checked ? m.settings.wallHeight : undefined }))}
+          />
+          Room height
+        </label>
+        {a.roomHeight !== undefined && (
+          <Field label="Height">
+            <NumField value={a.roomHeight} min={0} exclusiveMin onChange={(v) => onChange(updateArea(m, a.id, { roomHeight: v }), k('roomHeight'))} unit="m" />
+          </Field>
+        )}
+        {hasHeight && <p className="hint">The ceiling here sits at this height. A wall between rooms follows the taller one, and gaps between ceilings of different heights are closed. Under open sky it sets only the wall height.</p>}
+      </div>
+    );
     const mode = ceilingModeOf(a);
     const modes: { mode: CeilingMode; label: string; title: string }[] = [
-      { mode: 'none', label: 'None', title: a.floor ? "This area doesn't change the ceiling" : 'An area without a floor needs a ceiling finish or open sky' },
+      { mode: 'none', label: 'None', title: a.floor || hasHeight ? "This area doesn't change the ceiling" : 'An area without a floor needs a ceiling finish, open sky or a room height' },
       { mode: 'finish', label: 'Finish', title: 'Give the ceiling above this area its own finish' },
       { mode: 'open', label: 'Open sky', title: 'No ceiling here: the sky shows' },
     ];
@@ -305,7 +327,7 @@ export function Inspector({ museum: m, mediaUrl, selection, selectedMediaId, onC
               role="radio"
               aria-checked={mode === o.mode}
               className={'small' + (mode === o.mode ? ' active' : '')}
-              disabled={o.mode === 'none' && !a.floor}
+              disabled={o.mode === 'none' && !a.floor && !hasHeight}
               title={o.title}
               onClick={() => onChange(setCeilingMode(m, a.id, o.mode, m.settings.ceilingFinish))}
             >
@@ -327,6 +349,7 @@ export function Inspector({ museum: m, mediaUrl, selection, selectedMediaId, onC
           <Field label="Height"><NumField value={a.rect.h} min={0} exclusiveMin onChange={(v) => onChange(setAreaRect(m, a.id, { h: v }), k('h'))} unit="m" /></Field>
         </div>
         {floorRow}
+        {heightRow}
         {ceilingRow}
         {!m.settings.ceiling && mode !== 'none' && <p className="hint">The museum has no ceiling (see settings), so ceiling settings are not shown.</p>}
         {mode === 'open' && <p className="hint">Open sky removes the ceiling in this rectangle, where this area is on top of the stack.</p>}
@@ -437,7 +460,7 @@ export function SettingsPanel({ museum: m, onChange }: { museum: Museum; onChang
       <summary><h3>Museum settings</h3></summary>
       <Field label="Name"><input type="text" value={m.name} onChange={(e) => onChange({ ...m, name: e.target.value }, 'museum.name')} /></Field>
       <div className="grid2">
-        <Field label="Wall height"><NumField value={s.wallHeight} min={0} exclusiveMin onChange={(v) => onChange(updateSettings(m, { wallHeight: v }), 's.wh')} unit="m" /></Field>
+        <Field label="Default room height"><NumField value={s.wallHeight} min={0} exclusiveMin onChange={(v) => onChange(updateSettings(m, { wallHeight: v }), 's.wh')} unit="m" /></Field>
         <Field label="Wall thickness"><NumField value={s.wallThickness} min={0} exclusiveMin step={0.05} onChange={(v) => onChange(updateSettings(m, { wallThickness: v }), 's.wt')} unit="m" /></Field>
         <Field label="Grid"><NumField value={s.gridSize} min={0.05} step={0.05} onChange={(v) => onChange(updateSettings(m, { gridSize: v }), 's.grid')} unit="m" /></Field>
         <Field label="Ceiling">

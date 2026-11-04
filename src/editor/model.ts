@@ -1,6 +1,7 @@
 // Pure editor operations on an immutable Museum. No React, no DOM.
 import type { AudioZone, MediaItem, Museum, MuseumSettings, Vec2, Wall, WallFinish, WallSide, Work, ZoneShape } from '../shared/museum';
 import { closestPointOnSegment, wallLength, wallNormal } from '../shared/geometry';
+import { wallSideHeight } from '../shared/roomHeights';
 import { textureUsage } from '../shared/finishes';
 
 export const EPS = 1e-4;
@@ -389,8 +390,10 @@ export function computeWarnings(m: Museum): EditorWarning[] {
         out.push({ kind: 'past-wall-end', message: `Work ${label(w)} extends past the end of its wall`, target: { type: 'work', id: w.id } });
     }
     const h = imageHeight(m, w);
-    if (w.centerHeight + h / 2 > m.settings.wallHeight + tol)
-      out.push({ kind: 'above-wall', message: `Work ${label(w)} reaches above the wall top (${round4(w.centerHeight + h / 2)} m > ${m.settings.wallHeight} m)`, target: { type: 'work', id: w.id } });
+    // the room on the side the work hangs on decides how high it may reach
+    const top = wall ? wallSideHeight(m, wall, w.side, w.t - w.width / 2, w.t + w.width / 2) : m.settings.wallHeight;
+    if (w.centerHeight + h / 2 > top + tol)
+      out.push({ kind: 'above-wall', message: `Work ${label(w)} reaches above the wall top (${round4(w.centerHeight + h / 2)} m > ${top} m)`, target: { type: 'work', id: w.id } });
     if (w.centerHeight - h / 2 < -tol)
       out.push({ kind: 'below-floor', message: `Work ${label(w)} hangs below the floor`, target: { type: 'work', id: w.id } });
   }

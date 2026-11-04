@@ -353,9 +353,10 @@ export function parseMuseum(
           if (raw.openSky === true) a.openSky = true;
           else err(`${p}.openSky`, 'must be true when present');
         }
+        if (raw.roomHeight !== undefined) a.roomHeight = num(raw, 'roomHeight', p, { positive: true });
         if (a.ceiling !== undefined && raw.openSky !== undefined) err(p, "'ceiling' and 'openSky' are mutually exclusive");
-        if (a.floor === undefined && a.ceiling === undefined && raw.openSky === undefined)
-          err(p, "needs a 'floor' finish, a 'ceiling' finish and/or 'openSky'");
+        if (a.floor === undefined && a.ceiling === undefined && raw.openSky === undefined && raw.roomHeight === undefined)
+          err(p, "needs a 'floor' finish, a 'ceiling' finish, 'openSky' and/or 'roomHeight'");
         return a;
       });
   uniq(areas, 'areas');

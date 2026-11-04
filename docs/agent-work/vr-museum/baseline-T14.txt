@@ -1,0 +1,5 @@
+feature/room-heights
+0b41e3819d1181b3081586241bb48b0d758fdb50
+ M src/shared/museum.ts
+?? docs/agent-work/vr-museum/baseline-T14.txt
+?? docs/agent-work/vr-museum/briefs/T14.md

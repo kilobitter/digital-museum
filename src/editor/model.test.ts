@@ -216,6 +216,21 @@ describe('warnings', () => {
     expect(kinds(updateWork(m, wid, { centerHeight: 2.8 }))).toEqual(['above-wall']);
     expect(kinds(updateWork(m, wid, { centerHeight: 0.1 }))).toEqual(['below-floor']);
   });
+  it('above-wall uses the room on the side the work hangs on', () => {
+    const { m, wid } = base();
+    const side = m.works.find((w) => w.id === wid)!.side;
+    const tall = (onWorkSide: boolean) => {
+      const y0 = (side === 1) === onWorkSide ? 0.05 : -5.05; // +side is plan +y for this wall
+      return { ...m, areas: [{ id: 'a', name: 'tall', rect: { x: -1, y: y0, w: 6, h: 5 }, roomHeight: 5 }] };
+    };
+    const high = updateWork(tall(true), wid, { centerHeight: 3.5 }); // 3.5 + 0.25 above 3 m, fine in a 5 m room
+    expect(kinds(high)).toEqual([]);
+    const wrongSide = updateWork(tall(false), wid, { centerHeight: 3.5 }); // the 5 m room is behind the work
+    expect(kinds(wrongSide)).toEqual(['above-wall']);
+    expect(computeWarnings(wrongSide)[0].message).toContain('> 3 m');
+    // a 5 m wall does not make a taller painting fine on the 3 m side, and a low one on the tall side stays quiet
+    expect(kinds(updateWork(tall(true), wid, { centerHeight: 5.2 }))).toEqual(['above-wall']);
+  });
   it('zone with missing audio', () => {
     const { m, imgId } = base();
     expect(kinds(addZone(m, { kind: 'circle', cx: 5, cy: 5, r: 1 }, '').museum)).toEqual(['zone-no-audio']);

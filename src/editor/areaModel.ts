@@ -33,6 +33,7 @@ export function updateArea(m: Museum, id: string, patch: Partial<Omit<Area, 'id'
       if (next.floor === undefined) delete next.floor;
       if (next.ceiling === undefined) delete next.ceiling;
       if (next.openSky === undefined) delete next.openSky;
+      if (next.roomHeight === undefined) delete next.roomHeight;
       return next;
     }),
   };
@@ -44,13 +45,13 @@ export const ceilingModeOf = (a: Area): CeilingMode => (a.openSky ? 'open' : a.c
 
 /**
  * Switch what an area does to the ceiling: nothing, its own finish (`dflt` is used when it has none yet), or open
- * sky. An area must keep at least one of floor / ceiling / openSky, so 'none' is refused (museum returned as is)
- * for an area without a floor.
+ * sky. An area must keep at least one of floor / ceiling / openSky / roomHeight, so 'none' is refused (museum
+ * returned as is) for an area with neither a floor nor a roomHeight.
  */
 export function setCeilingMode(m: Museum, id: string, mode: CeilingMode, dflt: Finish): Museum {
   const a = findArea(m, id);
   if (!a) return m;
-  if (mode === 'none') return a.floor ? updateArea(m, id, { ceiling: undefined, openSky: undefined }) : m;
+  if (mode === 'none') return a.floor || a.roomHeight !== undefined ? updateArea(m, id, { ceiling: undefined, openSky: undefined }) : m;
   if (mode === 'open') return updateArea(m, id, { ceiling: undefined, openSky: true });
   return updateArea(m, id, { ceiling: a.ceiling ?? { ...dflt }, openSky: undefined });
 }
@@ -193,7 +194,7 @@ export function fillRoom(m: Museum, p: Vec2): AreaRect | null {
 /** Colour of an open-sky area on the blueprint. */
 export const SKY_BLUE = '#8fc4f0';
 
-/** Short surface tag for the blueprint label: F = floor, C = ceiling finish, O = open sky, e.g. "F+O". */
+/** Short surface tag for the blueprint label: F = floor, C = ceiling finish, O = open sky, then the room height, e.g. "F+C+5 m". */
 export function areaTag(a: Area): string {
-  return [a.floor ? 'F' : '', a.ceiling ? 'C' : '', a.openSky ? 'O' : ''].filter(Boolean).join('+');
+  return [a.floor ? 'F' : '', a.ceiling ? 'C' : '', a.openSky ? 'O' : '', a.roomHeight !== undefined ? `${round4(a.roomHeight)} m` : ''].filter(Boolean).join('+');
 }

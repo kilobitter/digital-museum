@@ -302,3 +302,16 @@ describe('setFinishForWalls', () => {
     valid(b);
   });
 });
+
+describe('room height survives move, rotate and duplicate', () => {
+  it('keeps roomHeight', () => {
+    const { m: m0 } = scene();
+    const m = { ...m0, areas: m0.areas.map((a) => ({ ...a, roomHeight: 5 })) };
+    const sel = { ...EMPTY_SEL, areas: [m.areas[0].id] };
+    expect(moveSelection(m, sel, { x: 1, y: 1 }).areas[0].roomHeight).toBe(5);
+    expect(rotateSelection(m, sel, 1).areas[0].roomHeight).toBe(5);
+    const d = duplicateSelection(m, sel, { x: 0.5, y: 0.5 });
+    expect(d.museum.areas).toHaveLength(2);
+    expect(d.museum.areas[1].roomHeight).toBe(5);
+  });
+});
