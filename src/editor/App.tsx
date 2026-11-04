@@ -624,10 +624,12 @@ export function App({ store, onSwitchFolder }: EditorProps) {
           setDropping(true);
         }
       }}
-      onDragLeave={(e) => e.currentTarget === e.target && setDropping(false)}
+      // Leaving the app or cancelling the drag: relatedTarget is outside the app, or null.
+      onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setDropping(false)}
+      // Capture phase: library sections stop their drop from bubbling up to onDrop below.
+      onDropCapture={() => setDropping(false)}
       onDrop={(e) => {
         e.preventDefault();
-        setDropping(false);
         // Dropping outside a library section is ambiguous for images: audio only.
         const dropped = [...e.dataTransfer.files];
         const audio = dropped.filter((f) => mediaKindOf(f) === 'audio');
