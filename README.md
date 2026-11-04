@@ -69,11 +69,11 @@ on purpose: if it is taken, the server stops instead of quietly picking another 
     sides: a wall reaches the taller of the two, and one wall that crosses several areas changes height
     along its length. Where two ceilings of different height meet, a vertical strip closes the gap
     (it is skipped where a wall already covers it, and next to open sky or when ceilings are off, since
-    there is no ceiling to close). The strip has the lower ceiling's finish, so a doorway between a low
-    and a tall room shows it above the door, seen from the tall room. Under open sky, or with ceilings
-    off, the height only sets the walls. Like the finishes, the top-most area with a room height wins
-    where areas overlap. An area's blueprint tag includes its height (for example `F+C+5 m`), and an
-    area with only a height is grey on the blueprint.
+    there is no ceiling to close). Above a doorway the strip continues the wall (same finish, flush with
+    its face on the tall side); a strip with no wall next to it has the lower ceiling's finish. Under
+    open sky, or with ceilings off, the height only sets the walls. Like the finishes, the top-most area
+    with a room height wins where areas overlap. An area's blueprint tag includes its height (for example
+    `F+C+5 m`), and an area with only a height is grey on the blueprint.
     Paintings keep their absolute height; the editor warns when one reaches above the room on its side
     of the wall.
 - **Sky**: set in the museum settings. It is what you see beyond the walls and through open-sky areas.

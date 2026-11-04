@@ -271,27 +271,36 @@ export function stepQuad(step: CeilingStep): THREE.BufferGeometry {
 
 const MIN_STEP_PIECE = 1e-4;
 
+export interface UncoveredStep extends CeilingStep {
+  /** The parallel wall whose drawn span touches this piece's end. Absent when none does. */
+  wall?: Wall;
+}
+
 /**
  * Cuts away the parts of each step that a wall already covers: a parallel, axis-aligned wall whose centre line lies
  * within thickness/2 of the step's line hides it, using the wall's drawn spans (extensions included). Walls that
  * do not cover it, or run diagonally, leave the step alone. Remainders under 1e-4 m are dropped.
  */
-export function uncoveredSteps(steps: CeilingStep[], walls: readonly Wall[], spans: Map<string, WallSpan[]>, thickness: number): CeilingStep[] {
-  const out: CeilingStep[] = [];
+export function uncoveredSteps(steps: CeilingStep[], walls: readonly Wall[], spans: Map<string, WallSpan[]>, thickness: number): UncoveredStep[] {
+  const out: UncoveredStep[] = [];
   for (const step of steps) {
     const vertical = Math.abs(step.a.x - step.b.x) < Math.abs(step.a.y - step.b.y); // runs along plan y
     const along: 'x' | 'y' = vertical ? 'y' : 'x';
     const across: 'x' | 'y' = vertical ? 'x' : 'y';
     const lineAt = step.a[across];
     let free: [number, number][] = [[Math.min(step.a[along], step.b[along]), Math.max(step.a[along], step.b[along])]];
+    const drawn: { wall: Wall; lo: number; hi: number }[] = [];
     for (const w of walls) {
       const len = Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y);
       if (len === 0 || Math.abs(w.a[across] - w.b[across]) > 1e-9) continue; // diagonal or perpendicular
       if (Math.abs(w.a[across] - lineAt) > thickness / 2 + 1e-6) continue;
       const dir = (w.b[along] - w.a[along]) / len;
+      const range = { wall: w, lo: Infinity, hi: -Infinity };
       for (const sp of spans.get(w.id) ?? []) {
         const p = w.a[along] + dir * sp.from, q = w.a[along] + dir * sp.to;
         const lo = Math.min(p, q), hi = Math.max(p, q);
+        range.lo = Math.min(range.lo, lo);
+        range.hi = Math.max(range.hi, hi);
         free = free.flatMap(([f0, f1]) => {
           if (hi <= f0 || lo >= f1) return [[f0, f1] as [number, number]];
           const keep: [number, number][] = [];
@@ -300,12 +309,16 @@ export function uncoveredSteps(steps: CeilingStep[], walls: readonly Wall[], spa
           return keep;
         });
       }
+      if (range.lo <= range.hi) drawn.push(range);
     }
     const reversed = step.a[along] > step.b[along];
     for (const [f0, f1] of free) {
       if (f1 - f0 < MIN_STEP_PIECE) continue;
       const mk = (v: number): Vec2 => (vertical ? { x: lineAt, y: v } : { x: v, y: lineAt });
-      out.push({ ...step, a: mk(reversed ? f1 : f0), b: mk(reversed ? f0 : f1), normal: { ...step.normal } });
+      const piece: UncoveredStep = { ...step, a: mk(reversed ? f1 : f0), b: mk(reversed ? f0 : f1), normal: { ...step.normal } };
+      const wall = (drawn.find((r) => Math.abs(r.hi - f0) <= STEP_EPS) ?? drawn.find((r) => Math.abs(r.lo - f1) <= STEP_EPS))?.wall;
+      if (wall) piece.wall = wall;
+      out.push(piece);
     }
   }
   return out;

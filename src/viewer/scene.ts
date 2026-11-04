@@ -3,12 +3,12 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { wallDirection, workPlacement } from '../shared/geometry';
-import type { Finish, MediaItem, Museum, WallFinish } from '../shared/museum';
+import type { Finish, MediaItem, Museum, Wall, WallFinish } from '../shared/museum';
 import { computeFloorBounds, type Bounds } from './collision';
 import { MAX_WALL_TEXTURE, loadTexture } from './textures';
-import { areaQuads, decomposeCeiling, finishKey, neededTextureIds, stepQuad, surfaceQuad, uncoveredSteps, wallFinishKey } from './surfaces';
+import { areaQuads, decomposeCeiling, type CeilingStep, finishKey, neededTextureIds, stepQuad, surfaceQuad, uncoveredSteps, wallFinishKey } from './surfaces';
 import { buildSky, type SkyDome } from './sky';
-import { applyWallGradient, wallGeometry } from './wallGeometry';
+import { applyWallGradient, doorHeaderGeometry, wallGeometry } from './wallGeometry';
 import { wallEnds, wallPieces, wallSpans } from './wallJoints';
 import { wallHeightProfile } from '../shared/roomHeights';
 
@@ -130,6 +130,8 @@ export async function buildMuseumScene(
       if (g) group.add(new THREE.Mesh(g, mat));
     }
   }
+  // Steps beside a wall (a doorway between rooms of different height) become door headers in the wall meshes.
+  const headers: { step: CeilingStep; wall: Wall }[] = [];
   if (museum.settings.ceiling) {
     const plan = decomposeCeiling(baseRect, museum.settings.ceilingFinish, museum.areas, H);
     const byMat = new Map<THREE.MeshLambertMaterial, THREE.BufferGeometry[]>();
@@ -140,6 +142,10 @@ export async function buildMuseumScene(
       byMat.set(mat, list);
     }
     for (const st of uncoveredSteps(plan.steps, museum.walls, spans, T)) {
+      if (st.wall) {
+        headers.push({ step: st, wall: st.wall });
+        continue;
+      }
       const mat = surfaceMat('ceiling', st.finish, 0);
       const list = byMat.get(mat) ?? [];
       list.push(stepQuad(st));
@@ -159,9 +165,7 @@ export async function buildMuseumScene(
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
-  for (const w of museum.walls) {
-    const d = wallDirection(w);
-    const f = effectiveFinish(museum, w);
+  const wallEntry = (f: WallFinish) => {
     const tex = f.textureId ? wallTextures.get(f.textureId) ?? null : null;
     const key = wallFinishKey(f, !!tex);
     let entry = wallMats.get(key);
@@ -169,13 +173,20 @@ export async function buildMuseumScene(
       entry = { mat: new THREE.MeshLambertMaterial(f.colorTop ? { color: 0xffffff, vertexColors: true, map: tex } : { color: new THREE.Color(f.color), map: tex }), geos: [] };
       wallMats.set(key, entry);
     }
+    return entry;
+  };
+  const gradientHeightOf = (pieces: { top: number }[]) => Math.max(...pieces.map((p) => p.top)); // one colour ramp along the whole wall
+  for (const w of museum.walls) {
+    const d = wallDirection(w);
+    const f = effectiveFinish(museum, w);
+    const entry = wallEntry(f);
     // Ends at corners and free ends reach T/2 past the end point so corners have no notch; end faces that would
     // sit in another wall's face plane are left out, and where a later wall lies on top of this one only the later
     // wall is drawn (see wallJoints.ts), so nothing z-fights.
     const pieces = wallPieceMap.get(w.id)!;
     if (!pieces.length) continue;
     const lo = pieces[0].from, hi = pieces[pieces.length - 1].to;
-    const gradientHeight = Math.max(...pieces.map((p) => p.top)); // one colour ramp along the whole wall
+    const gradientHeight = gradientHeightOf(pieces);
     q.setFromAxisAngle(up, -Math.atan2(d.y, d.x));
     for (const sp of pieces) {
       const geo = wallGeometry(sp.to - sp.from, sp.top, T, f.tileSize, { start: sp.capFrom, end: sp.capTo }, { front: sp.from - lo, back: hi - sp.to }, { start: sp.stepFrom, end: sp.stepTo });
@@ -185,6 +196,15 @@ export async function buildMuseumScene(
       geo.applyMatrix4(m4);
       entry.geos.push(geo);
     }
+  }
+  for (const { step, wall } of headers) {
+    const pieces = wallPieceMap.get(wall.id);
+    if (!pieces?.length) continue;
+    const f = effectiveFinish(museum, wall);
+    const geo = doorHeaderGeometry(step, wall, T, f.tileSize, { lo: pieces[0].from, hi: pieces[pieces.length - 1].to });
+    // The header is already in world space, so the gradient's reference height is 0 (not the box's centre offset).
+    if (f.colorTop) applyWallGradient(geo, 0, f.color, f.colorTop, gradientHeightOf(pieces));
+    wallEntry(f).geos.push(geo);
   }
   for (const { mat, geos } of wallMats.values()) {
     const g = merged(geos);

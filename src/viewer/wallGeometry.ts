@@ -1,6 +1,9 @@
 // Wall box geometry with world-scale UVs: one texture tile = `tileSize` metres on every face.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import type { Vec2, Wall } from '../shared/museum';
+import { wallDirection } from '../shared/geometry';
+import type { CeilingStep } from './surfaces';
 
 /**
  * A box of `length` x `height` x `thickness` (centred on the origin) whose UVs are in tiles:
@@ -100,4 +103,76 @@ export function applyWallGradient(geo: THREE.BufferGeometry, height: number, bot
     col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+}
+
+/** One quad from four world corners; the winding is flipped when needed so it faces `normal`. */
+function orientedQuad(corners: [number, number, number][], uvs: [number, number][], normal: [number, number, number]): THREE.BufferGeometry {
+  const [p0, p1, p2] = corners.map((c) => new THREE.Vector3(...c));
+  const geometric = new THREE.Vector3().subVectors(p1, p0).cross(new THREE.Vector3().subVectors(p2, p0));
+  const order = geometric.dot(new THREE.Vector3(...normal)) >= 0 ? [0, 1, 2, 3] : [3, 2, 1, 0];
+  const pos: number[] = [], nrm: number[] = [], uv: number[] = [];
+  for (const i of order) {
+    pos.push(...corners[i]);
+    nrm.push(...normal);
+    uv.push(...uvs[i]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex([0, 1, 2, 0, 2, 3]);
+  return g;
+}
+
+/**
+ * Door header: the strip above a doorway between rooms of different height, drawn as a continuation of `wall`.
+ * A vertical face (step.bottom..step.top) flush with the wall's face on the tall side (`step.normal`), plus a small
+ * underside at step.bottom reaching back to the step line. World-space, merges with wall boxes. UVs continue the
+ * wall box: u from the wall's own drawn range `drawn` (metres from `wall.a`), v = world height / tileSize.
+ */
+export function doorHeaderGeometry(
+  step: CeilingStep,
+  wall: Wall,
+  thickness: number,
+  tileSize: number,
+  /** the wall's drawn range in metres along the wall from `a`: pieces[0].from and pieces[last].to */
+  drawn: { lo: number; hi: number },
+): THREE.BufferGeometry {
+  const d = wallDirection(wall);
+  const n = step.normal;
+  const alongX = Math.abs(step.a.y - step.b.y) < Math.abs(step.a.x - step.b.x);
+  const nAcross = alongX ? n.y : n.x;
+  const lineAcross = alongX ? step.a.y : step.a.x; // the step line
+  const faceAcross = (alongX ? wall.a.y : wall.a.x) + nAcross * thickness / 2; // the wall's face on the tall side
+  const perp = { x: -d.y, y: d.x };
+  const plusZ = n.x * perp.x + n.y * perp.y > 0;
+  const uAt = (p: Vec2): number => {
+    const t = (p.x - wall.a.x) * d.x + (p.y - wall.a.y) * d.y;
+    return (plusZ ? t - drawn.lo : drawn.hi - t) / tileSize;
+  };
+  const at = (p: Vec2, across: number): Vec2 => (alongX ? { x: p.x, y: across } : { x: across, y: p.y });
+  const ends = [step.a, step.b];
+  const parts: THREE.BufferGeometry[] = [];
+
+  const f0 = at(ends[0], faceAcross), f1 = at(ends[1], faceAcross);
+  parts.push(orientedQuad(
+    [[f0.x, step.bottom, f0.y], [f1.x, step.bottom, f1.y], [f1.x, step.top, f1.y], [f0.x, step.top, f0.y]],
+    [[uAt(f0), step.bottom / tileSize], [uAt(f1), step.bottom / tileSize], [uAt(f1), step.top / tileSize], [uAt(f0), step.top / tileSize]],
+    [n.x, 0, n.y],
+  ));
+
+  const depth = Math.abs(faceAcross - lineAcross);
+  if (depth >= 1e-4) {
+    const s0 = at(ends[0], lineAcross), s1 = at(ends[1], lineAcross);
+    const v = depth / tileSize;
+    parts.push(orientedQuad(
+      [[f0.x, step.bottom, f0.y], [f1.x, step.bottom, f1.y], [s1.x, step.bottom, s1.y], [s0.x, step.bottom, s0.y]],
+      [[uAt(f0), 0], [uAt(f1), 0], [uAt(f1), v], [uAt(f0), v]],
+      [0, -1, 0],
+    ));
+  }
+  if (parts.length === 1) return parts[0];
+  const all = mergeGeometries(parts, false);
+  for (const g of parts) g.dispose();
+  return all;
 }

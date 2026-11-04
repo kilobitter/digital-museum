@@ -279,6 +279,37 @@ describe('uncoveredSteps', () => {
   it('a diagonal wall leaves it alone', () => {
     expect(run([wall('w', 4, 0, 6, 10)])).toEqual([step]);
   });
+
+  describe('wall next to a free piece', () => {
+    const w1 = wall('w1', 5, 0, 5, 4), w2 = wall('w2', 5, 6, 5, 10);
+    it('a doorway gap names the wall before the gap', () => {
+      const r = run([w1, w2]);
+      expect(r).toHaveLength(1);
+      expect(r[0].wall).toBe(w1);
+    });
+    it('a gap with a wall only after it names that wall', () => {
+      const r = run([w2]);
+      expect(r).toHaveLength(1);
+      expect(r[0].wall).toBe(w2);
+    });
+    it('two different walls give the lower-coordinate one, also with the wall order swapped', () => {
+      expect(run([w2, w1])[0].wall).toBe(w1);
+    });
+    it('a wall 0.09 off the step line is still found', () => {
+      const r = run([wall('o', 5.09, 0, 5.09, 4)]);
+      expect(r).toHaveLength(1);
+      expect(r[0].wall?.id).toBe('o');
+    });
+    it('no walls or a wall too far gives no wall key', () => {
+      for (const r of [run([]), run([wall('far', 5.2, 0, 5.2, 4)])]) {
+        expect(r).toHaveLength(1);
+        expect('wall' in r[0]).toBe(false);
+      }
+    });
+    it('a wall covering the whole step gives no pieces', () => {
+      expect(run([wall('all', 5, 0, 5, 10)])).toEqual([]);
+    });
+  });
 });
 
 describe('wallFinishKey', () => {
