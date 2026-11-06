@@ -40,7 +40,8 @@ describe('stress museum + planStreaming', () => {
     built.group.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
     // base floor + 1 merged wall mesh (one finish) + 1 merged frames + the sky dome
     // + 3 floor-area finishes + ceiling groups (base + 2 ceiling-area colours; the 3 open courtyards are holes)
-    expect(meshes.length).toBe(4 + 3 + 3);
+    // + 1 merged contact-shadow mesh (soft shadows at wall joints and behind frames)
+    expect(meshes.length).toBe(4 + 3 + 3 + 1);
     expect(built.slots.length).toBe(500);
     expect(built.warnings).toEqual([]);
     // images + labels only exist for streamed works: at most 2 meshes per resident work

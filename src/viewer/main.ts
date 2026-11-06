@@ -110,6 +110,7 @@ async function main(): Promise<void> {
     urlFor,
     Math.min(4, renderer.capabilities.getMaxAnisotropy()),
     () => {},
+    { contactShadows: new URLSearchParams(location.search).get('shadows') !== '0' },
   );
   scene.add(built.group);
   const streamer = new PaintingStreamer(built.group, built.slots, urlFor, Math.min(4, renderer.capabilities.getMaxAnisotropy()));

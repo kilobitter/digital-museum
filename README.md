@@ -196,6 +196,11 @@ stream in.
 Add `?debug` to the viewer URL (for example `https://localhost:5317/?debug`) to show an overlay with
 draw calls, triangles, GPU textures, resident paintings and decoded audio zones.
 
+Soft shadows along wall joints (where walls meet the floor and the ceiling, at free wall ends and
+around corners) and behind frames are faked with one merged mesh: one extra draw call, no textures,
+no real-time lights. Add `?shadows=0` to the viewer URL to leave them out, for comparing or for
+measuring on a headset.
+
 To stress-test, `node scripts/make-stress.mjs <outDir>` writes a museum with 90 rooms, 500 works and 90 zones
 into a folder of your choice (it refuses to write into `public/museum`). It includes a few open-sky courtyards.
 

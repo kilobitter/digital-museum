@@ -6,11 +6,12 @@ import { wallDirection, workPlacement } from '../shared/geometry';
 import type { Finish, MediaItem, Museum, Wall, WallFinish } from '../shared/museum';
 import { computeFloorBounds, type Bounds } from './collision';
 import { MAX_WALL_TEXTURE, loadTexture } from './textures';
-import { areaQuads, decomposeCeiling, type CeilingStep, finishKey, neededTextureIds, stepQuad, surfaceQuad, uncoveredSteps, wallFinishKey } from './surfaces';
+import { areaQuads, decomposeCeiling, type CeilingGroup, type CeilingStep, finishKey, neededTextureIds, stepQuad, surfaceQuad, uncoveredSteps, wallFinishKey } from './surfaces';
 import { buildSky, type SkyDome } from './sky';
 import { applyWallGradient, doorHeaderGeometry, wallGeometry } from './wallGeometry';
 import { wallEnds, wallPieces, wallSpans } from './wallJoints';
 import { wallHeightProfile } from '../shared/roomHeights';
+import { contactShadowGeometry, contactShadowMaterial } from './contactShadows';
 
 export const FRAME_DEPTH = 0.01; // frame back is flush with the wall face
 export const WORK_OFFSET = FRAME_DEPTH + 0.002; // image/label sit clearly in front of the frame front (~1.2 cm off the wall)
@@ -58,6 +59,7 @@ export async function buildMuseumScene(
   urlFor: (file: string) => string,
   anisotropy: number,
   onProgress?: () => void,
+  options?: { contactShadows?: boolean },
 ): Promise<BuiltScene> {
   const warnings: string[] = [];
   const group = new THREE.Group();
@@ -132,8 +134,10 @@ export async function buildMuseumScene(
   }
   // Steps beside a wall (a doorway between rooms of different height) become door headers in the wall meshes.
   const headers: { step: CeilingStep; wall: Wall }[] = [];
+  let ceilingGroups: CeilingGroup[] = [];
   if (museum.settings.ceiling) {
     const plan = decomposeCeiling(baseRect, museum.settings.ceilingFinish, museum.areas, H);
+    ceilingGroups = plan.groups;
     const byMat = new Map<THREE.MeshLambertMaterial, THREE.BufferGeometry[]>();
     for (const grp of plan.groups) {
       const mat = surfaceMat('ceiling', grp.finish, 0); // same finish => same material, whatever the tile size
@@ -239,6 +243,17 @@ export async function buildMuseumScene(
   // The bias is in depth-buffer steps: it keeps a distant frame (1 cm off the wall) from flickering against the wall, and
   // stays well under WORK_OFFSET's 2 mm image gap at the distances where paintings are loaded (under 1 mm at 20 m).
   if (frames) group.add(new THREE.Mesh(frames, new THREE.MeshBasicMaterial({ color: 0x1a1a1a, polygonOffset: true, polygonOffsetUnits: -2 })));
+
+  // Faked soft contact shadows (wall feet, ceiling joints, free ends, behind frames): ONE mesh, one draw call, no textures.
+  if (options?.contactShadows !== false) {
+    const geo = contactShadowGeometry({ museum, pieces: wallPieceMap, ends, ceilings: ceilingGroups, slots, headers });
+    if (geo) {
+      const mesh = new THREE.Mesh(geo, contactShadowMaterial());
+      mesh.name = 'contactShadows';
+      mesh.frustumCulled = false; // spans the whole museum
+      group.add(mesh);
+    }
+  }
 
   return { group, bounds, warnings, slots, sky };
 }
