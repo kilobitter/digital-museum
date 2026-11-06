@@ -152,10 +152,10 @@ export class XRLocomotion {
       this.player.rig.updateMatrixWorld(true);
       this.player.camera.getWorldPosition(this.v1);
       this.player.camera.getWorldDirection(this.v2);
-      const spawn = this.museum.settings.spawn;
-      const c = recentreCorrection({ x: this.v2.x, y: this.v2.z }, spawn.yawDeg);
+      const start = this.player.start; // the spawn, or the `?at` position
+      const c = recentreCorrection({ x: this.v2.x, y: this.v2.z }, start.yawDeg);
       this.player.turn(c.dyaw); // rotate about the head
-      this.player.placeHeadAt({ x: spawn.x, y: spawn.y });
+      this.player.placeHeadAt({ x: start.x, y: start.y });
       if (this.v1.y < 0.3) this.player.rig.position.y = 1.6; // reference space is eye-level, not floor-level
       this.needsRecentre = false;
     }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { parseMuseum } from '../shared/validate';
 import type { Museum } from '../shared/museum';
+import { parseAt, type StartPose } from '../shared/startPose';
 import { ZoneAudio } from './audio';
 import { createDebugOverlay, debugEnabled } from './debug';
 import { DesktopControls } from './desktop';
@@ -115,7 +116,18 @@ async function main(): Promise<void> {
   scene.add(built.group);
   const streamer = new PaintingStreamer(built.group, built.slots, urlFor, Math.min(4, renderer.capabilities.getMaxAnisotropy()));
 
-  const player = new Player(camera, museum, built.bounds);
+  // `?at=x,y[,yaw]`: start there instead of at the spawn (the editor's "From here" button).
+  let start: StartPose | undefined;
+  let startOutside = false;
+  const at = parseAt(location.search);
+  if (at) {
+    const b = built.bounds;
+    if (at.x < b.minX || at.x > b.maxX || at.y < b.minY || at.y > b.maxY) startOutside = true;
+    else start = { x: at.x, y: at.y, yawDeg: at.yawDeg ?? museum.settings.spawn.yawDeg };
+  } else if (new URLSearchParams(location.search).has('at')) {
+    console.warn('[museum] ignoring ?at: expected at=x,y or at=x,y,yaw in metres and degrees');
+  }
+  const player = new Player(camera, museum, built.bounds, start);
   scene.add(player.rig);
 
   // Only what is needed around the spawn is loaded before the start screen; the rest streams while walking.
@@ -215,6 +227,7 @@ async function main(): Promise<void> {
 
   const initial = allWarnings().length;
   if (initial) toast(`${initial} media file(s) failed to load`, 4000);
+  if (startOutside) toast('The start position in the address is outside the museum, so you start at the entrance.', 5000);
 }
 
 main().catch((e) => {

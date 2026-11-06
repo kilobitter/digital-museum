@@ -6,6 +6,8 @@ Workspace and baseline: /Users/ghijs/development/Digital museum, T1 0b933bc, T2 
 Routing: root Opus; builder Sonnet (user confirmed via /tasks, 2026-10-27)
 
 ## Accepted work and fixed contracts
+- T17 accepted (0 corrections), 2026-11-06, on branch feature/shadows-preview-check (not merged): `?at=x,y,yaw` start pose (src/shared/startPose.ts, Player.start, xr.ts recentre), editor "From here" (src/editor/previewPose.ts), "Check" panel (src/editor/museumCheck.ts, CheckPanel.tsx), label layout moved to src/shared/labelLayout.ts. Browser-checked in a temp worktree; xr.ts and the failed-save notice have no runtime evidence. Check does not run from `npm run seal`. Builder routing not confirmed via /tasks.
+- T16 accepted (1 correction cycle), 2026-11-06, commit 5c23729: contact shadows in one merged mesh (src/viewer/contactShadows.ts), `?shadows=0`. Depth bias -2/-2 kept on evidence: floor areas have factor -1, so a smaller factor makes floor strips vanish. Known: 1 px, about 4 level line at ceiling joints of inner corners. Rendered in headless swiftshader; no Quest measurement. Builder routing not confirmed via /tasks.
 - T15 accepted (0 corrections; 2 small Opus cleanups), 2026-11-04, on branch feature/room-heights (not merged): door header. A ceiling step with a parallel wall touching its end is drawn in that wall's mesh (doorHeaderGeometry: face flush with the tall side, underside back to the step line, UVs continue the wall); steps with no wall keep the lower ceiling's finish. Headless Brave renders checked by eye; real museum and Quest unverified. Builder routing not confirmed via /tasks.
 - T14 accepted (0 corrections; 2 small Opus wording fixes), 2026-11-04, on branch feature/room-heights (not merged): Area.roomHeight, src/shared/roomHeights.ts (per-side wall height profile), ceiling steps (decomposeCeiling.steps, stepQuad, uncoveredSteps), wallPieces with partial end faces, above-wall per side, imported rooms keep their height via the base area. Headless Brave renders checked by eye; editor UI, real-museum use and Quest unverified. Builder routing for T14 not confirmed via /tasks.
 - T13 accepted (0 corrections), 2026-10-30: sealed publishing. scripts/seal.mjs (public/museum -> public/sealed, AES-GCM, PBKDF2 600k, AAD=path), viewer password screen + remember-on-device (src/viewer/sealed*.ts, mediaOpener.ts, keyStore.ts), build guard drops dist/museum, tests use src/shared/fixtures/sample-museum.json. Browser/Quest unverified. Pending user: choose password + npm run seal, git rm --cached public/museum, decide on history rewrite, push.
@@ -30,7 +32,7 @@ Routing: root Opus; builder Sonnet (user confirmed via /tasks, 2026-10-27)
 - 2026-10-27 user desktop check of viewer: renders well, work labels correct. Audio zones and wall collision confirmed working on desktop. XR untested.
 
 ## Next actions
-User editor retest -> user Quest test -> user creates GitHub repo + pushes (their action).
+User tries T16/T17 on branch feature/shadows-preview-check -> Quest test, comparing `?shadows=0` -> user decides on merging to main (a push to main deploys).
 
 ## Standing user authorizations
 - Build the full scope in SPEC.md.

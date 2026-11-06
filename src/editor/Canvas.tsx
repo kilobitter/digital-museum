@@ -20,6 +20,10 @@ export interface CanvasHandle {
   /** Cancels an in-progress wall chain / draft. Returns true if something was cancelled. */
   cancelDraft(): boolean;
   fit(): void;
+  /** The plan position at the centre of the visible blueprint. */
+  viewCenter(): Vec2;
+  /** Pans so that `p` is at the centre; the zoom stays. */
+  centerOn(p: Vec2): void;
 }
 
 interface Props {
@@ -126,6 +130,8 @@ export function Canvas(p: Props) {
   const [box, setBox] = useState<{ a: Vec2; b: Vec2 } | null>(null);
   const pan = useRef<{ x: number; y: number; cx: number; cy: number } | null>(null);
   const fitted = useRef(false);
+  const viewRef = useRef(view);
+  viewRef.current = view;
 
   const grid = m.settings.gridSize;
 
@@ -154,6 +160,8 @@ export function Canvas(p: Props) {
         return had;
       },
       fit,
+      viewCenter: () => ({ x: viewRef.current.cx, y: viewRef.current.cy }),
+      centerOn: (pt) => setView((v) => ({ ...v, cx: pt.x, cy: pt.y })),
     }),
     [chain, draft, fit, p],
   );

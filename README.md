@@ -109,6 +109,21 @@ on purpose: if it is taken, the server stops instead of quietly picking another 
   1.2 m), click to cut it. The wall is split in two (finish kept); a leftover piece under 15 cm is
   removed. **Paintings in the doorway are taken down** (the editor says how many); use Undo if that was a
   mistake. Zones and areas are not changed.
+- **From here ↗** (top right, next to Preview) opens the viewer where you are working instead of at the
+  start point: in front of the selected painting (facing it), in the middle of the selected audio zone or
+  area, or, with nothing selected, in the middle of the blueprint view facing up. Changes that are not saved
+  yet are saved first, so the viewer shows them. The position travels in the address as `?at=x,y,yaw`
+  (plan metres and degrees as for the spawn point; `?at=x,y` keeps the spawn's direction), which is also a
+  handy link to one spot. On a sealed site the visitor still needs the password. A position outside the
+  museum is ignored with a message, and one inside a wall is moved out of it. It combines with `?debug`,
+  `?shadows=0` and `?source=folder`.
+- **Check** (top bar) lists what would go wrong for visitors, worst first: rooms and audio zones nobody can
+  walk to, doorways too narrow to walk through (a gap needs to be wider than the wall thickness plus
+  0.5 m, so 0.7 m by default), labels that stick out past their wall or run into another one, paintings
+  and labels that overlap, and paintings without an artist. Click an item to see it on the blueprint.
+  The check assumes walking from the start point (on desktop, and with smooth walking in VR; teleporting
+  can get through a gap that is too narrow to walk), and it only reports: nothing is changed. It runs
+  when you click it, says when the museum has changed since, and is not part of `npm run seal`.
 - Older `museum.json` files (format v1, v2 and v3) are upgraded automatically the next time they are saved.
 - `node scripts/make-sample.mjs <outDir>` writes a sample museum (with a small open-sky courtyard) to a folder of your choice. It refuses
   to overwrite `public/museum` unless you pass `--force`.

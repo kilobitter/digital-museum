@@ -15,6 +15,11 @@ import { shouldScheduleAutosave } from './autosave';
 import { LAYER_KEY, toolsFor, type Layer, type Selection, type Tool } from './types';
 import { MultiInspector } from './MultiInspector';
 import { WallPreview } from './WallPreview';
+import { CheckPanel } from './CheckPanel';
+import { checkMuseum, type CheckItem, type CheckReport } from './museumCheck';
+import { previewHere } from './previewPose';
+import { withStartPose } from '../shared/startPose';
+import type { MeasureText } from '../shared/labelLayout';
 import { ImportMenu } from './ImportMenu';
 import { prepareMedia } from './importFlow';
 import { mergeMuseum } from './importMerge';
@@ -100,6 +105,15 @@ function savePref(key: string, value: string): void {
   } catch { /* preference just is not remembered */ }
 }
 
+/** Text widths from a canvas, so the check sees plaques at the size the viewer draws them. */
+function canvasMeasure(): MeasureText {
+  const g = document.createElement('canvas').getContext('2d')!;
+  return (text, font) => {
+    g.font = font;
+    return g.measureText(text).width;
+  };
+}
+
 const isField = (t: EventTarget | null) => t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
 
 type Boot = { phase: 'loading' } | { phase: 'invalid'; errors: string[] } | { phase: 'ready'; missing: boolean };
@@ -133,6 +147,7 @@ export function App({ store, onSwitchFolder }: EditorProps) {
   const [interacting, setInteracting] = useState(false);
   const [dropping, setDropping] = useState(false);
   const [randomHang, setRandomHang] = useState(false);
+  const [check, setCheck] = useState<{ report: CheckReport; museum: Museum } | null>(null);
   const writable = store.writable;
   const canvas = useRef<CanvasHandle>(null);
 
@@ -580,6 +595,42 @@ export function App({ store, onSwitchFolder }: EditorProps) {
     onSwitchFolder?.();
   };
 
+  // ----- selecting what a warning or a check item points at -----
+  const showTarget = (t: { type: 'work' | 'wall' | 'zone' | 'area' | 'spawn'; id?: string }) => {
+    const want: Layer = t.type === 'area' ? 'areas' : 'build';
+    if (want !== layer) {
+      setLayerState(want);
+      setTool('select');
+    }
+    setSelection(t.type === 'spawn' ? { type: 'spawn' } : { type: t.type, id: t.id ?? '' });
+  };
+
+  const runCheck = () => {
+    const m = presentRef.current;
+    setCheck({ report: checkMuseum(m, canvasMeasure()), museum: m });
+  };
+  const pickCheckItem = (item: CheckItem) => {
+    if (item.target && item.target.type !== 'point') showTarget(item.target);
+    const at = item.at ?? (item.target?.type === 'point' ? { x: item.target.x, y: item.target.y } : undefined);
+    if (at) canvas.current?.centerOn(at);
+  };
+
+  /** "Preview from here": the viewer opens at the selected item or the middle of the blueprint view. */
+  const previewFromHere = async () => {
+    const here = previewHere(presentRef.current, sel, canvas.current?.viewCenter() ?? { x: 0, y: 0 });
+    // The tab has to open inside the click: a window opened after an await is blocked as a pop-up.
+    const tab = window.open('', '_blank');
+    if (!tab) return notify('The browser blocked the new tab. Allow pop-ups for this page and try again.');
+    const url = new URL(here.pose ? withStartPose(store.previewUrl, here.pose) : store.previewUrl, window.location.href).href;
+    try {
+      while (savingRef.current) await new Promise((r) => setTimeout(r, 50));
+      if (writable && saveStateRef.current !== 'conflict' && presentRef.current !== savedRef.current && !(await saveNow()))
+        notify('The latest changes could not be saved, so the preview shows the last saved version.');
+    } finally {
+      tab.location.href = url;
+    }
+  };
+
   const warnings = computeWarnings(museum);
   const selectedWork = sel?.type === 'work' ? findWork(museum, sel.id) : undefined;
 
@@ -649,12 +700,14 @@ export function App({ store, onSwitchFolder }: EditorProps) {
         <span className="sep" />
         <ImportMenu disabled={!writable || busy !== null} onlyUsed={onlyUsed} onOnlyUsed={setOnlyUsed} onSource={(s) => void importMuseum(s)} onProblem={(title, items) => setImportPanel({ title, items })} />
         <button disabled={busy !== null || museum.media.length + museum.walls.length === 0} onClick={() => void exportZip()} title="Download this museum as one .zip file to send to someone">Export .zip</button>
+        <button onClick={runCheck} title="List what would go wrong for visitors: unreachable rooms, narrow doorways, labels in the way, overlaps, missing artists">Check</button>
         {busy && <span className="muted">{busy}</span>}
         <span className="grow" />
         <button className={'status ' + status.cls} onClick={() => saveState === 'error' && setShowErrors((v) => !v)} title={saveState === 'error' ? 'Show errors' : ''}>
           <i /> {status.text}
         </button>
         <button className="primary" onClick={() => void saveNow()} disabled={saveState === 'saving' || saveState === 'conflict' || !writable} title="Ctrl/Cmd+S">Save</button>
+        <button onClick={() => void previewFromHere()} title={`Open the viewer ${previewHere(museum, sel, { x: 0, y: 0 }).what}. Unsaved changes are saved first.`}>From here ↗</button>
         <a className="btn" href={store.previewUrl} target="_blank" rel="noreferrer">Preview ↗</a>
       </header>
 
@@ -671,6 +724,8 @@ export function App({ store, onSwitchFolder }: EditorProps) {
           <ul className="errors">{importPanel.items.map((e, i) => <li key={i}>{e}</li>)}</ul>
         </div>
       )}
+
+      {check && <CheckPanel report={check.report} stale={check.museum !== museum} onRun={runCheck} onClose={() => setCheck(null)} onPick={pickCheckItem} />}
 
       {saveState === 'conflict' && (
         <div className="banner conflict">
@@ -759,13 +814,7 @@ export function App({ store, onSwitchFolder }: EditorProps) {
                     className="link"
                     onClick={() => {
                       const t = w.target;
-                      if (t.type === 'settings') return;
-                      const want: Layer = t.type === 'area' ? 'areas' : 'build';
-                      if (want !== layer) {
-                        setLayerState(want);
-                        setTool('select');
-                      }
-                      setSelection(t.type === 'spawn' ? { type: 'spawn' } : { type: t.type, id: t.id });
+                      if (t.type !== 'settings') showTarget({ type: t.type, id: t.id });
                     }}
                   >
                     {w.message}

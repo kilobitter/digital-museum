@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import type { Museum, Vec2 } from '../shared/museum';
 import { yawToRotationY } from '../shared/geometry';
+import type { StartPose } from '../shared/startPose';
 import { PLAYER_RADIUS, resolveMove, pushOut, type Bounds } from './collision';
 
 export const EYE_HEIGHT = 1.6;
@@ -10,21 +11,26 @@ const tmp = new THREE.Vector3();
 
 export class Player {
   readonly rig = new THREE.Group();
+  /** Where this visit starts: `start` when given, else the spawn; the position is already pushed out of walls. */
+  readonly start: StartPose;
   constructor(
     readonly camera: THREE.PerspectiveCamera,
     private museum: Museum,
     readonly bounds: Bounds,
+    start?: StartPose,
   ) {
     this.rig.name = 'rig';
     this.rig.add(camera);
+    const s = start ?? museum.settings.spawn;
+    const p = pushOut({ x: s.x, y: s.y }, museum.walls, museum.settings.wallThickness, PLAYER_RADIUS);
+    this.start = { x: p.x, y: p.y, yawDeg: s.yawDeg };
     this.resetToSpawn();
   }
 
+  /** Back to the start pose (the spawn, or the `?at` position the viewer was opened with). */
   resetToSpawn(): void {
-    const s = this.museum.settings.spawn;
-    const p = pushOut({ x: s.x, y: s.y }, this.museum.walls, this.museum.settings.wallThickness, PLAYER_RADIUS);
-    this.rig.position.set(p.x, 0, p.y);
-    this.rig.rotation.set(0, yawToRotationY(s.yawDeg), 0);
+    this.rig.position.set(this.start.x, 0, this.start.y);
+    this.rig.rotation.set(0, yawToRotationY(this.start.yawDeg), 0);
     this.resetDesktopCamera();
   }
 

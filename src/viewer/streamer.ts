@@ -1,6 +1,7 @@
 // Streams painting + label textures in and out around the visitor (see streaming.ts for the policy).
 import * as THREE from 'three';
 import type { Vec2 } from '../shared/museum';
+import { hasLabel } from '../shared/labelLayout';
 import { labelTexture, loadTexture, placeholderTexture } from './textures';
 import { WORK_OFFSET, type PaintingSlot } from './scene';
 import { PAINTING_LIMITS, planStreaming, type StreamLimits } from './streaming';
@@ -126,7 +127,7 @@ export class PaintingStreamer {
     disposables.push(imgGeo, imgMat);
     if (owned) disposables.push(owned);
     const m = slot.media;
-    if (m.title || m.artist || m.description) {
+    if (hasLabel(m)) {
       const { texture: lt, w: lw, h: lh } = labelTexture(m, this.anisotropy);
       const lg = new THREE.PlaneGeometry(lw, lh);
       const lm = new THREE.MeshBasicMaterial({ map: lt });
