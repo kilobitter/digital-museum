@@ -69,18 +69,26 @@ class Accumulator {
     const a = (e: V3, k: number): Vert => [e[0] + v[0] * k, e[1] + v[1] * k, e[2] + v[2] * k, peak];
     this.quad(a(e0, 0), a(e1, 0), a(e1, 1), a(e0, 1), n);
   }
-  /** A fan on the floor along chord a1-a2: a ring of radius `r` around it, swept from angle `a0` by `sweep` (plan angles). */
-  fan(a1: Vec2, a2: Vec2, a0: number, sweep: number, y: number, r: number, peak: number): void {
+  /**
+   * A fan along chord a1-a2 at height y: a ring of radius `r` around it, swept from angle `a0` by `sweep` (plan angles), facing `n`
+   * (up on a floor, down on a ceiling). `r` may be a function of a ray's start point and unit direction (0 = no ray).
+   */
+  fan(a1: Vec2, a2: Vec2, a0: number, sweep: number, y: number, r: number | ((q: Vec2, dir: Vec2) => number), peak: number, n: V3 = [0, 1, 0], segs = ARC_SEGMENTS): void {
+    const radii: number[] = [];
+    for (let k = 0; k <= segs; k++) {
+      const t = k / segs, ang = a0 + sweep * t;
+      radii.push(typeof r === 'number' ? r : r({ x: a1.x + (a2.x - a1.x) * t, y: a1.y + (a2.y - a1.y) * t }, { x: Math.cos(ang), y: Math.sin(ang) }));
+    }
     const ring = (j: number): Vert[] => {
       const out: Vert[] = [];
-      for (let k = 0; k <= ARC_SEGMENTS; k++) {
-        const t = k / ARC_SEGMENTS, ang = a0 + sweep * t;
-        out.push([a1.x + (a2.x - a1.x) * t + Math.cos(ang) * r * ROW_POS[j], y, a1.y + (a2.y - a1.y) * t + Math.sin(ang) * r * ROW_POS[j], peak * ROW_ALPHA[j]]);
+      for (let k = 0; k <= segs; k++) {
+        const t = k / segs, ang = a0 + sweep * t;
+        out.push([a1.x + (a2.x - a1.x) * t + Math.cos(ang) * radii[k] * ROW_POS[j], y, a1.y + (a2.y - a1.y) * t + Math.sin(ang) * radii[k] * ROW_POS[j], peak * ROW_ALPHA[j]]);
       }
       return out;
     };
     const rows = [ring(0), ring(1), ring(2)];
-    for (let j = 0; j < 2; j++) for (let k = 0; k < ARC_SEGMENTS; k++) this.quad(rows[j][k], rows[j][k + 1], rows[j + 1][k + 1], rows[j + 1][k], [0, 1, 0]);
+    for (let j = 0; j < 2; j++) for (let k = 0; k < segs; k++) this.quad(rows[j][k], rows[j][k + 1], rows[j + 1][k + 1], rows[j + 1][k], n);
   }
 }
 
@@ -101,14 +109,34 @@ function clipToRect(p0: Vec2, d: Vec2, r: { x: number; y: number; w: number; h: 
   return hi - lo > 1e-6 ? [lo, hi] : null;
 }
 
-/** How far from point q (V3, plan x/z) along plan direction n the rect extends. */
-function exitDistance(q: V3, n: Vec2, r: { x: number; y: number; w: number; h: number }): number {
+type Rect = { x: number; y: number; w: number; h: number };
+const inRect = (q: Vec2, r: Rect): boolean => q.x >= r.x && q.x <= r.x + r.w && q.y >= r.y && q.y <= r.y + r.h;
+
+/** How far from q along plan direction dir the rect extends. */
+function exitDistance(q: Vec2, dir: Vec2, r: Rect): number {
   let t = Infinity;
-  if (n.x > 1e-9) t = Math.min(t, (r.x + r.w - q[0]) / n.x);
-  if (n.x < -1e-9) t = Math.min(t, (r.x - q[0]) / n.x);
-  if (n.y > 1e-9) t = Math.min(t, (r.y + r.h - q[2]) / n.y);
-  if (n.y < -1e-9) t = Math.min(t, (r.y - q[2]) / n.y);
+  if (dir.x > 1e-9) t = Math.min(t, (r.x + r.w - q.x) / dir.x);
+  if (dir.x < -1e-9) t = Math.min(t, (r.x - q.x) / dir.x);
+  if (dir.y > 1e-9) t = Math.min(t, (r.y + r.h - q.y) / dir.y);
+  if (dir.y < -1e-9) t = Math.min(t, (r.y - q.y) / dir.y);
   return t;
+}
+
+const EXTENT_NUDGE = 1e-5;
+/**
+ * How far from plan point q along unit direction dir (up to max) the ceiling stays at `height`. The ceiling is cut into rects along
+ * every area edge, so this walks through neighbouring rects of that height. 0 when q itself has no ceiling at that height.
+ */
+function ceilingExtent(ceilings: readonly CeilingGroup[], q: Vec2, dir: Vec2, height: number, max: number): number {
+  const rects = ceilings.filter((g) => Math.abs(g.height - height) < 1e-6).flatMap((g) => g.rects);
+  let t = 0;
+  for (let i = 0; i < 64 && t < max; i++) {
+    const p = { x: q.x + dir.x * (t + EXTENT_NUDGE), y: q.y + dir.y * (t + EXTENT_NUDGE) }; // just past the last edge: half-open rects
+    const r = rects.find((rc) => inRect(p, rc));
+    if (!r) return t;
+    t = Math.max(t + EXTENT_NUDGE, t + EXTENT_NUDGE + exitDistance(p, dir, r));
+  }
+  return Math.min(t, max);
 }
 
 /** Intervals [lo, hi] of [s0, s1] left after removing `blocks`. */
@@ -130,6 +158,21 @@ export function contactShadowGeometry(input: ContactShadowInput): THREE.BufferGe
   let fy = 0;
   for (const q of areaQuads(museum)) fy = Math.max(fy, q.y);
   fy += GAP;
+
+  // The ceiling group over plan point q, unless the walls there (top `top`) do not reach it.
+  const ceilingAt = (q: Vec2, top: number): CeilingGroup | undefined => {
+    const g = ceilings.find((c) => c.rects.some((r) => inRect(q, r)));
+    return g && g.height <= top + 1e-6 ? g : undefined;
+  };
+  // A door header continues one of `ws` (or a parallel wall) across plan point q: its strips already carry the ceiling shadow there.
+  const headerContinues = (q: Vec2, ws: readonly Wall[]): boolean =>
+    headers.some((h) => {
+      const hd = wallDirection(h.wall);
+      return ws.some((w) => { const d = wallDirection(w); return h.wall === w || Math.abs(hd.x * d.y - hd.y * d.x) < COLLINEAR_SIN; }) &&
+        [h.step.a, h.step.b].some((e) => Math.hypot(e.x - q.x, e.y - q.y) <= T + 1e-6);
+    });
+  const ceilingFan = (a1: Vec2, a2: Vec2, a0: number, sweep: number, g: CeilingGroup, segs?: number): void =>
+    acc.fan(a1, a2, a0, sweep, g.height - GAP, (q, dir) => ceilingExtent(ceilings, q, dir, g.height, CEILING_WIDTH), CEILING_PEAK, [0, -1, 0], segs);
 
   for (const w of museum.walls) {
     const list = pieces.get(w.id) ?? [];
@@ -161,7 +204,7 @@ export function contactShadowGeometry(input: ContactShadowInput): THREE.BufferGe
         if (hi - lo > 1e-6) blocks.push([lo, hi]);
       }
       for (const p of list) {
-        // A free end is closed by its cap face (and fan), so the strips reach that face's plane.
+        // A free end is closed by its cap face (and fans), so the strips reach that face's plane, leaving no hairline gap to the fans.
         const s0 = p.from - (p.capFrom ? GAP : 0), s1 = p.to + (p.capTo ? GAP : 0);
         for (const [t0, t1] of subtract(s0, s1, blocks)) {
           // The floor strip starts at the wall face itself and the wall strip at y = 0, so no unshaded sliver is left
@@ -180,10 +223,11 @@ export function contactShadowGeometry(input: ContactShadowInput): THREE.BufferGe
           for (const r of g.rects) {
             const iv = clipToRect(probe, d, r);
             if (!iv) continue;
-            for (const [lo, hi] of subtract(Math.max(iv[0], p.from), Math.min(iv[1], p.to), blocks)) {
+            for (const [lo, hi] of subtract(Math.max(iv[0], s0), Math.min(iv[1], s1), blocks)) {
               acc.strip(at(lo, n, off, g.height), at(hi, n, off, g.height), [0, -CEILING_WIDTH, 0], CEILING_PEAK, n3);
               // the ceiling strip must not leave the rect (a low ceiling's edge, open sky)
-              const cw = Math.min(CEILING_WIDTH, exitDistance(at(lo, n, face, 0), n, r), exitDistance(at(hi, n, face, 0), n, r));
+              const q = (s: number) => { const v = at(s, n, face, 0); return { x: v[0], y: v[2] }; };
+              const cw = Math.min(ceilingExtent(ceilings, q(lo), n, g.height, CEILING_WIDTH), ceilingExtent(ceilings, q(hi), n, g.height, CEILING_WIDTH));
               if (cw > 0.01) acc.strip(at(lo, n, face, g.height - GAP), at(hi, n, face, g.height - GAP), [n.x * cw, 0, n.y * cw], CEILING_PEAK, [0, -1, 0]);
             }
           }
@@ -202,6 +246,18 @@ export function contactShadowGeometry(input: ContactShadowInput): THREE.BufferGe
         acc.fan(corner(1), corner(-1), a0, sweep, fy, FOOT_WIDTH, FOOT_PEAK);
         const fw = Math.min(FOOT_WIDTH, p.top);
         if (fw > 0.01) acc.strip([corner(1).x, 0, corner(1).y], [corner(-1).x, 0, corner(-1).y], [0, fw, 0], FOOT_PEAK, [d.x * e, 0, d.y * e]);
+        // The ceiling above the end, per side (the two rooms may differ): a quarter fan and a jamb strip hanging from the ceiling.
+        // A door header that continues this end already carries the shadow.
+        const mid = { x: w.a.x + d.x * s, y: w.a.y + d.y * s };
+        if (headerContinues(mid, [w])) continue;
+        const along = (atEnd ? p.to : p.from) - e * JOIN_EPS;
+        for (const sd of [1, -1] as const) {
+          const g = ceilingAt({ x: w.a.x + d.x * along + nPlus.x * sd * (T / 2 + JOIN_EPS), y: w.a.y + d.y * along + nPlus.y * sd * (T / 2 + JOIN_EPS) }, p.top);
+          if (!g) continue;
+          const as = Math.atan2(nPlus.y * sd, nPlus.x * sd);
+          ceilingFan(corner(sd), mid, as, wrapAngle(Math.atan2(d.y * e, d.x * e) - as), g, ARC_SEGMENTS / 2);
+          acc.strip([corner(sd).x, g.height, corner(sd).y], [mid.x, g.height, mid.y], [0, -Math.min(CEILING_WIDTH, g.height), 0], CEILING_PEAK, [d.x * e, 0, d.y * e]);
+        }
       }
     }
   }
@@ -217,7 +273,7 @@ export function contactShadowGeometry(input: ContactShadowInput): THREE.BufferGe
     const along = which === 'a' ? piece.from : piece.to;
     if (Math.abs(along - (which === 'a' ? -T / 2 : wallLength(w) + T / 2)) > 1e-6) return null; // cut by overlap handling
     const d = wallDirection(w);
-    return { p, along, u: which === 'a' ? d : { x: -d.x, y: -d.y }, d, w };
+    return { p, along, u: which === 'a' ? d : { x: -d.x, y: -d.y }, d, w, top: piece.top };
   };
   walls.forEach((w1, i) => {
     if (wallLength(w1) === 0) return;
@@ -238,7 +294,13 @@ export function contactShadowGeometry(input: ContactShadowInput): THREE.BufferGe
       const n1 = outer(c1.u, c2.u), n2 = outer(c2.u, c1.u);
       const A = (c: NonNullable<typeof c1>, n: Vec2): Vec2 => ({ x: c.w.a.x + c.d.x * c.along + n.x * off, y: c.w.a.y + c.d.y * c.along + n.y * off });
       const a0 = Math.atan2(n1.y, n1.x);
-      acc.fan(A(c1, n1), A(c2, n2), a0, wrapAngle(Math.atan2(n2.y, n2.x) - a0), fy, FOOT_WIDTH, FOOT_PEAK);
+      const sweep = wrapAngle(Math.atan2(n2.y, n2.x) - a0);
+      acc.fan(A(c1, n1), A(c2, n2), a0, sweep, fy, FOOT_WIDTH, FOOT_PEAK);
+      // The ceiling over the outer wedge, found just outside the corner along the bisector.
+      const bis = { x: n1.x + n2.x, y: n1.y + n2.y }, bl = Math.hypot(bis.x, bis.y);
+      const A1 = A(c1, n1), A2 = A(c2, n2);
+      const g = ceilingAt({ x: (A1.x + A2.x) / 2 + (bis.x / bl) * JOIN_EPS, y: (A1.y + A2.y) / 2 + (bis.y / bl) * JOIN_EPS }, Math.min(c1.top, c2.top));
+      if (g && !headerContinues(c1.p, [c1.w, c2.w])) ceilingFan(A1, A2, a0, sweep, g); // a door header continuing a wall leaves no exposed ceiling corner
     }
   });
 
@@ -251,11 +313,9 @@ export function contactShadowGeometry(input: ContactShadowInput): THREE.BufferGe
     const wallH = Math.min(CEILING_WIDTH, step.top - step.bottom);
     acc.strip(pt(step.a, faceAcross + (alongX ? n.y : n.x) * GAP, step.top), pt(step.b, faceAcross + (alongX ? n.y : n.x) * GAP, step.top), [0, -wallH, 0], CEILING_PEAK, n3);
     let cw = CEILING_WIDTH;
-    const rects = ceilings.filter((g) => Math.abs(g.height - step.top) < 1e-6).flatMap((g) => g.rects);
     for (const q of [step.a, step.b]) {
-      const probe = pt(q, faceAcross + (alongX ? n.y : n.x) * 0.01, 0);
-      const r = rects.find((rc) => probe[0] > rc.x && probe[0] < rc.x + rc.w && probe[2] > rc.y && probe[2] < rc.y + rc.h);
-      cw = r ? Math.min(cw, exitDistance(pt(q, faceAcross, 0), n, r)) : 0;
+      const v = pt(q, faceAcross, 0);
+      cw = Math.min(cw, ceilingExtent(ceilings, { x: v[0], y: v[2] }, n, step.top, CEILING_WIDTH));
     }
     if (cw > 0.01) acc.strip(pt(step.a, faceAcross, step.top - GAP), pt(step.b, faceAcross, step.top - GAP), [n.x * cw, 0, n.y * cw], CEILING_PEAK, [0, -1, 0]);
   }

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import type { Museum, Wall } from '../shared/museum';
+import type { Area, Museum, Wall } from '../shared/museum';
 import { wallHeightProfile } from '../shared/roomHeights';
 import { defaultMuseum } from '../shared/validate';
-import { FLOOR_UNDER, FOOT_PEAK, FOOT_WIDTH, FRAME_SHIFT, GAP, contactShadowGeometry, contactShadowMaterial } from './contactShadows';
+import { CEILING_PEAK, CEILING_WIDTH, FLOOR_UNDER, FOOT_PEAK, FOOT_WIDTH, FRAME_SHIFT, GAP, contactShadowGeometry, contactShadowMaterial } from './contactShadows';
 import type { PaintingSlot } from './scene';
 import { decomposeCeiling, uncoveredSteps } from './surfaces';
 import { wallEnds, wallPieces, wallSpans } from './wallJoints';
@@ -259,7 +259,8 @@ describe('contactShadowGeometry: joints, overhang and headers', () => {
     const none = build(headerMuseum())!;
     const g = build(headerMuseum(), [], true)!;
     const inGap = (t: Tri) => t.c.x > 3.3 && t.c.x < 3.9 && t.c.y > 2.5 && Math.abs(t.c.z) < 1;
-    expect(tris(none).some(inGap)).toBe(false);
+    // (the free ends' own ceiling fans reach 0.3 m into the gap from each side, so only the middle must be empty without headers)
+    expect(tris(none).some((t) => inGap(t) && Math.abs(t.c.x - 3.5) < 0.1)).toBe(false);
     const face = tris(g).filter((t) => inGap(t) && vertical(t));
     expect(face.length).toBeGreaterThan(0);
     for (const t of face) { expect(t.n.z).toBeLessThan(-0.99); for (const p of t.p) expect(p.y).toBeLessThanOrEqual(5 + 1e-6); }
@@ -269,3 +270,193 @@ describe('contactShadowGeometry: joints, overhang and headers', () => {
     expect(tris(g).some((t) => t.c.x > 3.3 && t.c.x < 3.9 && Math.abs(t.c.z) < 1 && horizontal(t) && Math.abs(t.c.y - 3) < 0.05)).toBe(false);
   });
 });
+
+describe('contactShadowGeometry: ceiling fans at exposed corners and free ends', () => {
+  const other = { color: '#eeeeee', tileSize: 1 }; // a second ceiling finish: cuts the ceiling at the area's edges without changing the height
+  const down = (g: THREE.BufferGeometry, h = 3) => tris(g).filter((t) => horizontal(t) && t.n.y < 0 && t.c.y > h - 0.5);
+  const dist = (p: THREE.Vector3, a: { x: number; y: number }, b: { x: number; y: number }) => {
+    const dx = b.x - a.x, dz = b.y - a.y, l2 = dx * dx + dz * dz;
+    const t = l2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.y) * dz) / l2));
+    return Math.hypot(p.x - a.x - dx * t, p.z - a.y - dz * t);
+  };
+  /** Ceiling triangles behind the extended end plane of a corner wall: the fan (strips lie within the walls' spans). */
+  const fanTris = (g: THREE.BufferGeometry, P: { x: number; y: number }, us: { x: number; y: number }[], h = 3) =>
+    down(g, h).filter((t) => Math.hypot(t.c.x - P.x, t.c.z - P.y) < 0.6 && us.some((u) => (t.c.x - P.x) * u.x + (t.c.z - P.y) * u.y < -T / 2 + 1e-6));
+
+  const corners: [string, Wall[], { x: number; y: number }, { x: number; y: number }[]][] = [
+    ['axis', [wall('h', 0, 0, 5, 0), wall('v', 5, 0, 5, 4)], { x: 5, y: 0 }, [{ x: -1, y: 0 }, { x: 0, y: 1 }]],
+    ['reversed', [wall('h', 5, 0, 0, 0), wall('v', 5, 4, 5, 0)], { x: 5, y: 0 }, [{ x: -1, y: 0 }, { x: 0, y: 1 }]],
+    ['diagonal', [wall('h', 0, 0, 4, 3), wall('v', 4, 3, 8, -1)], { x: 4, y: 3 }, [{ x: -0.8, y: -0.6 }, { x: 0.7071, y: -0.7071 }]],
+    ['diagonal reversed', [wall('v', 8, -1, 4, 3), wall('h', 4, 3, 0, 0)], { x: 4, y: 3 }, [{ x: 0.7071, y: -0.7071 }, { x: -0.8, y: -0.6 }]],
+  ];
+  for (const [name, walls, P, us] of corners) {
+    it(`${name} corner: a downward fan at height - GAP, peak at the chord and 0 at CEILING_WIDTH`, () => {
+      const g = build(museumWith(walls))!;
+      const fan = fanTris(g, P, us);
+      expect(fan.length).toBeGreaterThan(0);
+      const plain = build(museumWith(walls, (m) => { m.settings.ceiling = false; }))!;
+      expect(verts(plain).every((v) => v.p.y < 0.5)).toBe(true);
+      const vs = fan.flatMap((t) => t.p.map((p, i) => ({ p, a: t.a[i] })));
+      for (const v of vs) {
+        expect(v.p.y).toBeCloseTo(3 - GAP, 5);
+        expect([CEILING_PEAK, CEILING_PEAK / 3, 0].some((a) => Math.abs(v.a - a) < 1e-6)).toBe(true);
+      }
+      for (const t of fan) expect(t.n.y).toBeLessThan(-0.99);
+      // the wedge is closed: vertices with peak alpha lie at the corner, zero alpha ones a full CEILING_WIDTH out
+      const cornerDist = (v: { p: THREE.Vector3 }) => Math.hypot(v.p.x - P.x, v.p.z - P.y);
+      expect(Math.min(...vs.filter((v) => v.a > CEILING_PEAK - 1e-6).map(cornerDist))).toBeLessThan(T);
+      expect(Math.max(...vs.filter((v) => v.a < 1e-6).map(cornerDist))).toBeGreaterThan(CEILING_WIDTH);
+    });
+  }
+  it('axis corner: radius is exactly CEILING_WIDTH around the outer corner, nothing on the inside', () => {
+    const g = build(museumWith([wall('h', 0, 0, 5, 0), wall('v', 5, 0, 5, 4)]))!;
+    const c = { x: 5 + T / 2, y: -T / 2 };
+    const vs = fanTris(g, { x: 5, y: 0 }, [{ x: -1, y: 0 }, { x: 0, y: 1 }]).flatMap((t) => t.p.map((p, i) => ({ p, a: t.a[i] })));
+    for (const v of vs) {
+      const r = dist(v.p, { x: c.x, y: c.y - GAP }, { x: c.x + GAP, y: c.y });
+      if (v.a < 1e-6) expect(r).toBeCloseTo(CEILING_WIDTH, 2);
+      if (v.a > CEILING_PEAK - 1e-6) expect(r).toBeLessThan(1e-3);
+      expect(v.p.x).toBeGreaterThan(c.x - 1e-6);
+      expect(v.p.z).toBeLessThan(c.y + 1e-6);
+    }
+    // inner corner: the ceiling strips stop at the other wall
+    for (const t of down(g)) if (t.p.every((p) => p.z > T / 2 && p.z < 1 && p.x < 5.1)) for (const p of t.p) expect(p.x).toBeLessThanOrEqual(5 - T / 2 + 1e-6);
+  });
+  it('no fan without a ceiling, and none under open sky at the corner or end', () => {
+    const none = build(museumWith([wall('h', 0, 0, 5, 0), wall('v', 5, 0, 5, 4), wall('e', 8, 0, 11, 0)], (m) => { m.settings.ceiling = false; }))!;
+    expect(verts(none).every((v) => v.p.y < 0.5)).toBe(true);
+    const sky = build(museumWith([wall('h', 0, 0, 5, 0), wall('v', 5, 0, 5, 4)], (m) => { m.areas = [{ id: 's', name: 's', rect: { x: 4.5, y: -3, w: 3, h: 3 }, openSky: true }]; }))!;
+    expect(fanTris(sky, { x: 5, y: 0 }, [{ x: -1, y: 0 }, { x: 0, y: 1 }])).toHaveLength(0);
+    // a free end with open sky on its -z side only: fan and jamb on the +z side alone
+    const end = build(museumWith([wall('w', 0, 0, 3, 0)], (m) => { m.areas = [{ id: 's', name: 's', rect: { x: -1, y: -3, w: 6, h: 3 }, openSky: true }]; }))!;
+    const past = down(end).filter((t) => t.c.x > 3 + T / 2 + 0.01);
+    expect(past.length).toBeGreaterThan(0);
+    for (const t of past) for (const p of t.p) expect(p.z).toBeGreaterThan(-1e-6);
+    const jamb = tris(end).filter((t) => vertical(t) && t.n.x > 0.99 && t.c.y > 2.5);
+    expect(jamb.length).toBeGreaterThan(0);
+    for (const t of jamb) for (const p of t.p) expect(p.z).toBeGreaterThan(-1e-6);
+  });
+  for (const kind of ['tall', 'sky', 'equal'] as const) {
+    it(`an area edge 0.15 m beyond the corner (${kind}): ${kind === 'equal' ? 'full radius' : 'no fan vertex past the edge'}`, () => {
+      const rect = { x: 5 + T / 2 + 0.15, y: -5, w: 5, h: 10 };
+      const area: Area = kind === 'tall' ? { id: 'a', name: 'a', rect, roomHeight: 5 } : kind === 'sky' ? { id: 'a', name: 'a', rect, openSky: true } : { id: 'a', name: 'a', rect, ceiling: other };
+      const g = build(museumWith([wall('h', 0, 0, 5, 0), wall('v', 5, 0, 5, 4)], (m) => { m.areas = [area]; }))!;
+      const xs = fanTris(g, { x: 5, y: 0 }, [{ x: -1, y: 0 }, { x: 0, y: 1 }]).flatMap((t) => t.p.map((p) => p.x));
+      expect(xs.length).toBeGreaterThan(0);
+      if (kind === 'equal') expect(Math.max(...xs)).toBeGreaterThan(5 + T / 2 + CEILING_WIDTH - 0.01);
+      else expect(Math.max(...xs)).toBeLessThanOrEqual(rect.x + 1e-6);
+    });
+  }
+  it('a ceiling strip keeps its full width beside an area edge where the ceiling continues at the same height', () => {
+    const wallOnly = [wall('w', 0, 0, 6, 0)];
+    const same = build(museumWith(wallOnly, (m) => { m.areas = [{ id: 'a', name: 'a', rect: { x: -3, y: 0.25, w: 12, h: 5 }, ceiling: other }]; }))!;
+    const maxZ = (g: THREE.BufferGeometry) => Math.max(...down(g).filter((t) => t.c.x > 1 && t.c.x < 5).flatMap((t) => t.p.map((p) => p.z)));
+    expect(maxZ(same)).toBeCloseTo(T / 2 + CEILING_WIDTH, 6);
+    const tall = build(museumWith(wallOnly, (m) => { m.areas = [{ id: 'a', name: 'a', rect: { x: -3, y: 0.25, w: 12, h: 5 }, roomHeight: 5 }]; }))!;
+    expect(Math.max(...down(tall).filter((t) => Math.abs(t.c.y - 3) < 0.01 && t.c.x > 1 && t.c.x < 5).flatMap((t) => t.p.map((p) => p.z)))).toBeLessThanOrEqual(0.25 + 1e-6);
+  });
+
+  it('free end: a quarter fan and a jamb strip on each side, facing the end direction', () => {
+    for (const [name, w, e] of [['+x', wall('w', 0, 0, 3, 0), { x: 1, y: 0 }], ['-x', wall('w', 3, 0, 0, 0), { x: -1, y: 0 }]] as const) {
+      const g = build(museumWith([w]))!;
+      const endX = e.x > 0 ? 3 + T / 2 : -T / 2;
+      const fan = down(g).filter((t) => t.c.x * e.x > endX * e.x + 1e-6 && Math.abs(t.c.x - endX) < 0.4);
+      for (const side of [1, -1]) {
+        const half = fan.filter((t) => Math.sign(t.c.z) === side);
+        expect(half.length, name).toBeGreaterThan(0);
+        for (const t of half) for (const p of t.p) { expect(p.y).toBeCloseTo(3 - GAP, 5); expect(Math.abs(p.z)).toBeLessThanOrEqual(T / 2 + GAP + CEILING_WIDTH + 1e-9); }
+        // the jamb hangs from the ceiling on the cap face, from the corner to the middle of the end
+        const jamb = tris(g).filter((t) => vertical(t) && t.n.x * e.x > 0.99 && t.c.y > 2.5 && Math.sign(t.c.z) === side);
+        expect(jamb.length, name).toBeGreaterThan(0);
+        const ys = jamb.flatMap((t) => t.p.map((p) => p.y));
+        expect(Math.max(...ys)).toBeCloseTo(3);
+        expect(Math.min(...ys)).toBeCloseTo(3 - CEILING_WIDTH);
+        const zs = jamb.flatMap((t) => t.p.map((p) => p.z * side));
+        expect(Math.min(...zs)).toBeCloseTo(0, 6);
+        expect(Math.max(...zs)).toBeCloseTo(T / 2 + GAP, 6);
+        for (const t of jamb) for (const p of t.p) expect(Math.abs(p.x - (endX + e.x * GAP))).toBeLessThan(1e-6);
+      }
+      // the fan reaches CEILING_WIDTH past the end plane
+      expect(Math.max(...fan.flatMap((t) => t.p.map((p) => p.x * e.x)))).toBeCloseTo(endX * e.x + CEILING_WIDTH + GAP, 2);
+    }
+  });
+  it('free end between rooms of different height: each side at its own ceiling, the wall reaching both', () => {
+    const g = build(museumWith([wall('w', 0, 0, 6, 0)], (m) => { m.areas = [{ id: 'h', name: 'h', rect: { x: -2, y: 0, w: 10, h: 4 }, roomHeight: 4 }]; }))!;
+    for (const [side, h] of [[1, 4], [-1, 3]] as const) {
+      const fan = tris(g).filter((t) => horizontal(t) && t.n.y < 0 && t.c.x > 6 + T / 2 + 0.01 && Math.sign(t.c.z) === side);
+      expect(fan.length).toBeGreaterThan(0);
+      for (const t of fan) for (const p of t.p) expect(p.y).toBeCloseTo(h - GAP, 5);
+      const jamb = tris(g).filter((t) => vertical(t) && t.n.x > 0.99 && t.c.y > 2.5 && Math.sign(t.c.z) === side);
+      expect(Math.max(...jamb.flatMap((t) => t.p.map((p) => p.y)))).toBeCloseTo(h);
+    }
+  });
+  it('a ceiling above the wall top gets no fan and no jamb strip', () => {
+    // pieces lower than the 3 m ceiling, as the strips do (g.height > p.top)
+    const m = museumWith([wall('w', 0, 0, 3, 0)], (x) => { x.settings.wallHeight = 3; });
+    const ends = wallEnds(m.walls);
+    const spans = wallSpans(m.walls, ends, T);
+    const pieces = wallPieces(m.walls, spans, new Map([['w', wallHeightProfile(m, m.walls[0])]]), T);
+    for (const p of pieces.get('w')!) p.top = 2.5;
+    const plan = decomposeCeiling({ x: -20, y: -20, w: 40, h: 40 }, m.settings.ceilingFinish, m.areas, 3);
+    const g = contactShadowGeometry({ museum: m, pieces, ends, ceilings: plan.groups, slots: [], headers: [] })!;
+    expect(tris(g).some((t) => t.c.y > 2.6)).toBe(false);
+  });
+
+  const headerMuseum = () => museumWith([wall('l', 0, 0, 3, 0), wall('r', 4, 0, 7, 0), wall('s', -3, 6, 7, 6)], (m) => {
+    m.areas = [{ id: 't', name: 't', rect: { x: -5, y: -5, w: 15, h: 5 }, roomHeight: 5 }];
+  });
+  const jambsUp = (g: THREE.BufferGeometry) => tris(g).filter((t) => vertical(t) && Math.abs(t.n.x) > 0.99 && t.c.y > 2.5 && t.c.x > 3 && t.c.x < 4);
+  it('a free end continued by a door header gets no ceiling fan or jamb strip', () => {
+    const withHeader = build(headerMuseum(), [], true)!;
+    expect(jambsUp(withHeader).filter((t) => Math.abs(Math.abs(t.c.x - 3.5) - 0.4) < 0.01)).toHaveLength(0);
+    // the 3 m side (+z) of the doorway: no fan under the low ceiling in the gap either
+    expect(down(withHeader).filter((t) => Math.abs(t.c.y - 3) < 0.01 && Math.abs(t.c.z) < 1 && t.c.x > 3.1 && t.c.x < 3.9)).toHaveLength(0);
+    const without = build(headerMuseum(), [], false)!;
+    expect(jambsUp(without).length).toBeGreaterThan(0);
+    expect(down(without).filter((t) => Math.abs(t.c.y - 3) < 0.01 && Math.abs(t.c.z) < 1 && t.c.x > 3.1 && t.c.x < 3.9).length).toBeGreaterThan(0);
+  });
+  it('a door between rooms of equal height has no header, so its ends get fans', () => {
+    const g = build(museumWith([wall('l', 0, 0, 3, 0), wall('r', 4, 0, 7, 0)]), [], true)!;
+    expect(down(g).filter((t) => t.c.x > 3.1 && t.c.x < 3.5).length).toBeGreaterThan(0);
+    expect(down(g).filter((t) => t.c.x > 3.5 && t.c.x < 3.9).length).toBeGreaterThan(0);
+    expect(jambsUp(g).length).toBeGreaterThan(0);
+  });
+
+  it('a corner at a doorway between rooms of different height has no ceiling fan (the header continues the wall) but keeps its floor fan', () => {
+    const walls = () => [wall('hall', 0, -6, 0, -1), wall('c', 0, -1, 5, -1), wall('hall2', 0, 1, 0, 6), wall('c2', 0, 1, 5, 1)];
+    // fan vertices lie in the outer wedge of the corner (0,-1): x < -T/2 and z > -1 + T/2; the header strip only has vertices at z = -0.9 and 0.9
+    const inWedge = (v: THREE.Vector3) => v.x < -T / 2 - 1e-3 && v.z > -1 + T / 2 + 1e-3 && v.z < 0.8;
+    const ceilFan = (g: THREE.BufferGeometry) => down(g).filter((t) => t.c.y > 2.5 && t.p.some(inWedge));
+    const floorFan = (g: THREE.BufferGeometry) => tris(g).filter((t) => horizontal(t) && t.n.y > 0 && t.c.y < 0.5 && t.p.some(inWedge));
+    const low = museumWith(walls(), (m) => { m.areas = [{ id: 'k', name: 'k', rect: { x: 0, y: -1, w: 5, h: 2 }, roomHeight: 2.5 }]; });
+    const gh = build(low, [], true)!;
+    expect(ceilFan(gh)).toHaveLength(0);
+    expect(floorFan(gh).length).toBeGreaterThan(0);
+    expect(down(gh).some((t) => t.c.y > 2.5 && t.c.x < -0.1 && Math.abs(t.c.z) < 0.9)).toBe(true); // the header strip itself is there
+    const eq = build(museumWith(walls()), [], true)!;
+    expect(ceilFan(eq).length).toBeGreaterThan(0);
+    expect(floorFan(eq).length).toBeGreaterThan(0);
+  });
+  it('floor geometry is unchanged by the ceiling work', () => {
+    const m = museumWith([wall('a', 0, 0, 6, 0), wall('b', 6, 0, 6, 4), wall('c', 6, 4, 3, 7), wall('d', 1, 0, 1, 4), wall('e', 8, 0, 10, 0), wall('f', 12, 0, 15, 0), wall('t', 3, 0, 3, 3)], (x) => {
+      x.areas = [
+        { id: 'f1', name: 'f1', rect: { x: 0, y: 0, w: 6, h: 4 }, floor: { color: '#fff', tileSize: 1 } },
+        { id: 'f2', name: 'f2', rect: { x: 2, y: 1, w: 2, h: 2 }, floor: { color: '#000', tileSize: 1 } },
+        { id: 'r', name: 'r', rect: { x: 8, y: -2, w: 4, h: 4 }, roomHeight: 4, ceiling: { color: '#ccc', tileSize: 1 } },
+      ];
+    });
+    const g = build(m)!;
+    const floor = tris(g).filter((t) => t.p.every((p) => p.y < 0.5));
+    let h = 2166136261;
+    for (const t of floor) for (const p of t.p) for (const c of [p.x, p.y, p.z]) for (const ch of c.toFixed(6) + ',') h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+    expect(floor.length).toBe(FLOOR_COUNT);
+    expect(h).toBe(FLOOR_HASH);
+  });
+  it('everything stays finite', () => {
+    const g = build(museumWith([wall('h', 0, 0, 5, 0), wall('v', 5, 0, 5, 4), wall('e', 8, 0, 11, 0), wall('z', 3, 3, 3, 3)]))!;
+    for (const v of verts(g)) expect([v.p.x, v.p.y, v.p.z, v.a].every(Number.isFinite)).toBe(true);
+  });
+});
+// Taken from the code at commit 5562fe9 (before the ceiling fans).
+const FLOOR_COUNT = 444;
+const FLOOR_HASH = 2047821562;
