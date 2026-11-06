@@ -9,11 +9,12 @@ import { Library, type Section } from './Library';
 import { LibraryResizer, useLibraryHeight } from './LibraryResizer';
 import { AUDIO_WARN_BYTES, MAX_PANORAMA_SIDE, MAX_TEXTURE_SIDE, PANORAMA_JPEG_QUALITY, isRoughlyEquirect, mediaKindOf, parsePaintingFilename, prepareImage } from './media';
 import { isDuplicate, runPool, summarizeUpload } from './uploadQueue';
-import { addMedia, computeWarnings, removeMedia } from './model';
+import { addMedia, computeWarnings, findWork, removeMedia } from './model';
 import { canRedo, canUndo, clearHistory, commitFrom, createHistory, push, redo, replace, undo, type History } from './history';
 import { shouldScheduleAutosave } from './autosave';
 import { LAYER_KEY, toolsFor, type Layer, type Selection, type Tool } from './types';
 import { MultiInspector } from './MultiInspector';
+import { WallPreview } from './WallPreview';
 import { ImportMenu } from './ImportMenu';
 import { prepareMedia } from './importFlow';
 import { mergeMuseum } from './importMerge';
@@ -580,6 +581,7 @@ export function App({ store, onSwitchFolder }: EditorProps) {
   };
 
   const warnings = computeWarnings(museum);
+  const selectedWork = sel?.type === 'work' ? findWork(museum, sel.id) : undefined;
 
   if (boot.phase === 'loading') return <div className="boot">Loading…</div>;
   if (boot.phase === 'invalid')
@@ -724,6 +726,7 @@ export function App({ store, onSwitchFolder }: EditorProps) {
             <Field label="Door width"><NumField value={doorWidth} min={0.5} max={4} step={0.1} onChange={setDoorWidth} unit="m" /></Field>
           </div>
         )}
+        {selectedWork && <WallPreview museum={museum} work={selectedWork} />}
         {notice && <div className="toast" onClick={() => setNotice(null)}>{notice}</div>}
         {dropping && <div className="dropveil">Drop audio here, or images onto a library section</div>}
       </main>

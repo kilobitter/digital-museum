@@ -102,7 +102,7 @@ h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06
 .scalebar { position: absolute; left: 12px; bottom: 12px; display: flex; align-items: center; gap: 8px; color: var(--muted); font: 11px ui-monospace, Menlo, monospace; pointer-events: none; }
 .scalebar-line { height: 7px; border: 1.5px solid var(--ink); border-top: 0; }
 .zoombox { position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
-.hintbar { position: absolute; left: 12px; top: 10px; background: rgba(255, 255, 255, 0.9); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; color: var(--muted); pointer-events: none; max-width: 70%; }
+.hintbar { position: absolute; left: 12px; top: 10px; background: rgba(255, 255, 255, 0.9); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; color: var(--muted); pointer-events: none; max-width: min(70%, calc(100% - 298px)); /* stays clear of .wall-preview */ }
 .toast { position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 8px 14px; border-radius: 8px; max-width: 70%; cursor: pointer; z-index: 5; }
 .dropveil { position: absolute; inset: 8px; border: 2px dashed var(--accent); background: rgba(42, 111, 219, 0.08); display: grid; place-items: center; color: var(--accent); font-size: 16px; border-radius: 10px; pointer-events: none; z-index: 6; }
 
@@ -207,6 +207,13 @@ body.lib-resizing * { cursor: row-resize !important; }
 .door-gap.bad { stroke: var(--danger); opacity: 0.35; }
 .tool-options { position: absolute; left: 12px; top: 44px; display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.92); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; font-size: 12px; }
 .tool-options .numfield input { width: 72px; }
+.wall-preview { position: absolute; right: 12px; top: 10px; width: min-content; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; pointer-events: none; box-shadow: 0 2px 8px rgba(27, 42, 65, 0.12); }
+.wall-preview svg { display: block; }
+.wall-preview-edge { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.wall-preview-painting { fill: rgba(217, 130, 43, 0.14); stroke: var(--work); stroke-width: 2; }
+.wall-preview-painting.overflow { fill: rgba(192, 57, 43, 0.14); stroke: var(--danger); }
+.wall-preview-center { fill: var(--ok); }
+.wall-preview-caption { padding: 3px 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; text-align: center; }
 .multi-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 8px; }
 .multi-summary { margin: 0 0 6px; font-weight: 600; }
 

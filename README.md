@@ -40,6 +40,10 @@ on purpose: if it is taken, the server stops instead of quietly picking another 
 - Title, artist and description belong to the painting, not to one place on the wall.
 - **Random painting** hangs an unhung painting (random) on each click; "Pick another" in a work's
   inspector swaps it.
+- **Wall preview**: selecting one painting shows a small window at the top right of the blueprint, looking
+  straight at a wall, to true scale: the wall top and floor, the painting and its centre point. It follows the
+  room height on the side the painting hangs on and turns red when the painting reaches past the wall. It shows
+  height only: the painting is always drawn in the middle, whatever its position along the wall.
 - Walls use the default finish from the museum settings, or their own (colour, or texture times
   colour, tiled at a size in metres). A wall finish can also be a vertical **Gradient** (bottom colour at
   the floor to top colour at the wall top, no rotation); floors and ceilings have no gradient.
