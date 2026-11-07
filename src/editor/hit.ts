@@ -32,6 +32,18 @@ export function workSegment(m: Museum, workId: string): { a: Vec2; b: Vec2; cent
   return { a: { x: center.x - d.x * h, y: center.y - d.y * h }, b: { x: center.x + d.x * h, y: center.y + d.y * h }, centre: center };
 }
 
+const workPickRadius = (tol: number) => Math.max(tol, 0.08);
+
+/** Every work a click at `p` could mean (stacked paintings share a spot on the blueprint), highest on the wall first. */
+export function worksAt(m: Museum, p: Vec2, tol: number): string[] {
+  const out: { id: string; height: number }[] = [];
+  for (const w of m.works) {
+    const s = workSegment(m, w.id);
+    if (s && closestPointOnSegment(p, s.a, s.b).dist <= workPickRadius(tol)) out.push({ id: w.id, height: w.centerHeight });
+  }
+  return out.sort((a, b) => b.height - a.height || (a.id < b.id ? -1 : 1)).map((w) => w.id);
+}
+
 /** `tol` is the pick radius in metres (screen tolerance divided by zoom). */
 export function hitTest(m: Museum, p: Vec2, tol: number, selectedZoneId: string | null): Hit | null {
   if (selectedZoneId) {
@@ -54,7 +66,7 @@ export function hitTest(m: Museum, p: Vec2, tol: number, selectedZoneId: string 
     const s = workSegment(m, w.id);
     if (!s) continue;
     const d = closestPointOnSegment(p, s.a, s.b).dist;
-    if (d <= Math.max(tol, 0.08) && (!bestWork || d < bestWork.d)) bestWork = { id: w.id, d };
+    if (d <= workPickRadius(tol) && (!bestWork || d < bestWork.d)) bestWork = { id: w.id, d };
   }
   if (bestWork) return { type: 'work', id: bestWork.id };
 

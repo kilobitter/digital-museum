@@ -3,9 +3,9 @@ import type { Museum, Vec2, ZoneShape } from '../shared/museum';
 import { closestPointOnSegment, wallDirection, wallLength, workPlacement } from '../shared/geometry';
 import {
   addRoom, addWall, addZone, coincidentEndpoints, defaultWorkWidth, findHangTarget, findWork, findZone, hangWork, moveEndpoints, pickRandomPainting,
-  moveWall, moveZone, resizeCircle, resizeRect, round4, setSpawn, setWorkT, snapPoint, snapValue, updateZone, type EndpointRef,
+  moveWall, moveZone, resizeCircle, resizeRect, round4, setSpawn, setWorkT, snapPoint, snapValue, updateZone, workLabel, type EndpointRef,
 } from './model';
-import { hitTest, workSegment, zoneHandles } from './hit';
+import { hitTest, workSegment, worksAt, zoneHandles } from './hit';
 import { areaHandles, hitTestAreas } from './hit';
 import {
   addArea, areaTag, fillRoom, findArea, SKY_BLUE, MIN_AREA_SIZE, moveArea, rectFromDrag, resizeAreaRect, snapAreaMove, snapAreaPoint, updateArea,
@@ -63,7 +63,8 @@ interface View { cx: number; cy: number; scale: number }
 type Drag =
   | { kind: 'end'; base: Museum; refs: EndpointRef[]; moved: boolean }
   | { kind: 'wall'; base: Museum; id: string; start: Vec2; moved: boolean }
-  | { kind: 'work'; base: Museum; id: string; moved: boolean }
+  /** `press`: screen position, so a wobble during a click is not a drag. `next`: selected on release when it was a click (stacked works). */
+  | { kind: 'work'; base: Museum; id: string; moved: boolean; press: Vec2; next: string | null; stack: string[] }
   | { kind: 'zone'; base: Museum; id: string; start: Vec2; moved: boolean }
   | { kind: 'handle'; base: Museum; id: string; handle: 'nw' | 'ne' | 'se' | 'sw' | 'radius'; moved: boolean }
   | { kind: 'spawn'; base: Museum; start: Vec2; moved: boolean }
@@ -262,7 +263,17 @@ export function Canvas(p: Props) {
     drag.current = null;
     if (d?.moved) p.onCommit(d.base);
     else if (d?.kind === 'group' && d.click) p.onSelectMulti(d.click);
+    else if (d?.kind === 'work' && d.next) {
+      p.onSelect({ type: 'work', id: d.next });
+      noteStack(d.stack, d.next);
+    }
     p.onInteraction(false);
+  };
+
+  /** Stacked works look like one line on the blueprint, so say which one is selected now. */
+  const noteStack = (stack: string[], id: string) => {
+    const work = findWork(m, id);
+    if (stack.length > 1 && work) p.onNotice(`Painting ${stack.indexOf(id) + 1} of ${stack.length} here: "${workLabel(m, work)}". Click again for the next.`);
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -341,10 +352,16 @@ export function Canvas(p: Props) {
             p.onSelect({ type: 'wall', id: hit.id });
             drag.current = { kind: 'wall', base: m, id: hit.id, start: snapPoint(pt, grid), moved: false };
             break;
-          case 'work':
-            p.onSelect({ type: 'work', id: hit.id });
-            drag.current = { kind: 'work', base: m, id: hit.id, moved: false };
+          case 'work': {
+            // Pressing on the selected work of a stack keeps it, so it can be dragged; a click (no drag) then moves on to the next.
+            const stack = worksAt(m, pt, tol);
+            const at = selection?.type === 'work' ? stack.indexOf(selection.id) : -1;
+            const id = at >= 0 ? stack[at] : hit.id;
+            p.onSelect({ type: 'work', id });
+            if (at < 0) noteStack(stack, id);
+            drag.current = { kind: 'work', base: m, id, moved: false, press: { x: e.clientX, y: e.clientY }, next: at >= 0 && stack.length > 1 ? stack[(at + 1) % stack.length] : null, stack };
             break;
+          }
           case 'zone':
             p.onSelect({ type: 'zone', id: hit.id });
             drag.current = { kind: 'zone', base: m, id: hit.id, start: snapPoint(pt, grid), moved: false };
@@ -489,6 +506,7 @@ export function Canvas(p: Props) {
         const w = findWork(base, d.id);
         const wall = w && base.walls.find((x) => x.id === w.wallId);
         if (!w || !wall) return;
+        if (!d.moved && Math.hypot(e.clientX - d.press.x, e.clientY - d.press.y) <= BOX_MIN_PX) return;
         const t = closestPointOnSegment(pt, wall.a, wall.b).t;
         d.moved = true;
         p.onPreview(setWorkT(base, d.id, snapValue(t, 0.05)));

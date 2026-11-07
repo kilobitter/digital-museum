@@ -90,6 +90,9 @@ on purpose: if it is taken, the server stops instead of quietly picking another 
     default gradient and shows a warning. The sky is not lit or fogged and does not move when you walk.
   - The lighting inside the museum is the same everywhere, so a very bright or dark panorama does not
     change how open areas are lit.
+- **Stacked paintings**: several paintings can hang on the same spot, for example one above the other. They
+  look like one line on the blueprint, so clicking there again selects the next one, from the highest down, and a
+  message says which one you have. Drag to move the one that is selected; a drag never changes the selection.
 - **Selecting many things** (Select tool): drag on empty canvas to draw a selection box (everything fully
   inside is selected; Shift adds to the selection), **Shift+click** adds or removes one item, **Ctrl/Cmd+A**
   selects everything on the current layer, Esc clears. On the Build layer the box picks walls, paintings,
