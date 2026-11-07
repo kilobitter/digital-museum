@@ -4,7 +4,7 @@ import { defaultSky } from '../shared/validate';
 import { wallLength } from '../shared/geometry';
 import {
   coincidentEndpoints, deleteWall, fillLayout, fillWall, deleteWork, deleteZone, findMedia, findWall, findWork, findZone, flipWork, hungCount, imageHeight,
-  moveEndpoints, pickRandomPainting, round4, setSpawn, setWallFinish, withGradient, setWorkT, setWorkWidth, updateMedia, updateSettings, updateWork,
+  moveEndpoints, pickRandomPainting, round4, setSpawn, setWallFinish, setWorksLabel, withGradient, setWorkT, setWorkWidth, updateMedia, updateSettings, updateWork,
   updateZone,
 } from './model';
 import { Field, NumField } from './fields';
@@ -211,6 +211,10 @@ export function Inspector({ museum: m, mediaUrl, selection, selectedMediaId, onC
           </button>
           {sharedBy > 1 && <span className="hint">shared by {sharedBy} works</span>}
         </div>
+        <label className="check">
+          <input type="checkbox" checked={!w.hideLabel} onChange={(e) => onChange(setWorksLabel(m, [w.id], e.target.checked))} />
+          {sharedBy > 1 ? 'Show label on this copy' : 'Show label'}
+        </label>
         {media && <LabelFields museum={m} media={media} onChange={onChange} />}
         <div className="grid2">
           <Field label="Width"><NumField value={w.width} min={0} exclusiveMin onChange={(v) => onChange(setWorkWidth(m, w.id, v), k('width'))} unit="m" /></Field>

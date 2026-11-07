@@ -127,7 +127,7 @@ export class PaintingStreamer {
     disposables.push(imgGeo, imgMat);
     if (owned) disposables.push(owned);
     const m = slot.media;
-    if (hasLabel(m)) {
+    if (!slot.hideLabel && hasLabel(m)) {
       const { texture: lt, w: lw, h: lh } = labelTexture(m, this.anisotropy);
       const lg = new THREE.PlaneGeometry(lw, lh);
       const lm = new THREE.MeshBasicMaterial({ map: lt });

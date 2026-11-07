@@ -26,6 +26,25 @@ const expectError = (m: unknown, fragment: string) => {
   expect(errs.some((e) => e.includes(fragment)), `${fragment} in ${JSON.stringify(errs)}`).toBe(true);
 };
 
+describe('work.hideLabel', () => {
+  const works = (m: Any) => {
+    const r = parseMuseum(m);
+    if (!r.ok) throw new Error(r.errors.join());
+    return r.museum.works;
+  };
+  it('keeps true, and leaves the field out when absent or false', () => {
+    const on = base(); on.works[0].hideLabel = true;
+    expect(works(on)[0].hideLabel).toBe(true);
+    expect('hideLabel' in works(base())[0]).toBe(false);
+    const off = base(); off.works[0].hideLabel = false;
+    expect('hideLabel' in works(off)[0]).toBe(false);
+  });
+  it('rejects anything else', () => {
+    const m = base(); m.works[0].hideLabel = 'yes';
+    expectError(m, 'works[0].hideLabel');
+  });
+});
+
 describe('defaultMuseum', () => {
   it('is valid and empty', () => {
     const d = defaultMuseum();

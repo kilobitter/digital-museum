@@ -203,7 +203,7 @@ describe('contactShadowGeometry: frames', () => {
       const n = new THREE.Vector3(Math.sin(rotY), 0, Math.cos(rotY));
       const right = new THREE.Vector3(Math.cos(rotY), 0, -Math.sin(rotY));
       const pos = new THREE.Vector3(10, 1.5, 4);
-      const slot: PaintingSlot = { id: 's', media: {} as never, w: 1, h: 0.6, position: pos, rotationY: rotY, x: 10, y: 4 };
+      const slot: PaintingSlot = { id: 's', media: {} as never, w: 1, h: 0.6, position: pos, rotationY: rotY, x: 10, y: 4, hideLabel: false };
       const g = build(museumWith([]), [slot])!;
       const ts = tris(g);
       expect(ts.length).toBeGreaterThan(0);

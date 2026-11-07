@@ -227,6 +227,18 @@ export function updateWork(m: Museum, id: string, patch: Partial<Omit<Work, 'id'
   return { ...m, works: m.works.map((w) => (w.id === id ? { ...w, ...patch } : w)) };
 }
 
+/** Turns the label on or off for these works. Showing it removes the field, so museum.json stays as it was. */
+export function setWorksLabel(m: Museum, ids: readonly string[], show: boolean): Museum {
+  return {
+    ...m,
+    works: m.works.map((w) => {
+      if (!ids.includes(w.id)) return w;
+      const { hideLabel: _, ...rest } = w;
+      return show ? rest : { ...rest, hideLabel: true as const };
+    }),
+  };
+}
+
 export function setWorkT(m: Museum, id: string, t: number): Museum {
   const w = findWork(m, id);
   const wall = w && findWall(m, w.wallId);

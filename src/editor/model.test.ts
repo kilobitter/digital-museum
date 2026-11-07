@@ -4,7 +4,7 @@ import { defaultMuseum, parseMuseum } from '../shared/validate';
 import { wallNormal } from '../shared/geometry';
 import {
   addMedia, addRoom, addWall, addZone, clampT, coincidentEndpoints, computeWarnings, deleteWall, findHangTarget, flipWork, hangWork,
-  mediaUsage, moveEndpoints, removeMedia, resizeRect, setWorkT, updateWork, updateZone, snapValue, moveWall,
+  mediaUsage, moveEndpoints, removeMedia, resizeRect, setWorkT, setWorksLabel, updateWork, updateZone, snapValue, moveWall,
   pickRandomPainting, updateMedia, setWallFinish, withGradient, updateSettings, hungCount, fillLayout, fillWall,
 } from './model';
 import { canRedo, canUndo, commitFrom, createHistory, push, redo, replace, undo } from './history';
@@ -119,6 +119,17 @@ describe('hanging works', () => {
     expect(setWorkT(h.museum, h.id, 100).works[0].t).toBe(3.5);
     expect(flipWork(h.museum, h.id).works[0].side).toBe(-1);
     expect(flipWork(flipWork(h.museum, h.id), h.id).works[0].side).toBe(1);
+  });
+  it('setWorksLabel hides and shows only the given works, and showing leaves no field behind', () => {
+    const img = withImage(horiz);
+    const h1 = hangWork(img.museum, img.id, findHangTarget(img.museum, { x: 1, y: 0.2 })!)!;
+    const h2 = hangWork(h1.museum, img.id, findHangTarget(h1.museum, { x: 3, y: 0.2 })!)!;
+    const hidden = setWorksLabel(h2.museum, [h1.id], false);
+    expect(hidden.works.find((w) => w.id === h1.id)!.hideLabel).toBe(true);
+    expect('hideLabel' in hidden.works.find((w) => w.id === h2.id)!).toBe(false);
+    const shown = setWorksLabel(hidden, [h1.id], true);
+    expect(shown.works).toEqual(h2.museum.works);
+    expect(parseMuseum(JSON.parse(JSON.stringify(hidden)))).toMatchObject({ ok: true, museum: { works: hidden.works } });
   });
 });
 

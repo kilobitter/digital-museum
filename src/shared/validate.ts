@@ -266,6 +266,8 @@ export function parseMuseum(
       centerHeight: num(raw, 'centerHeight', p),
       width: num(raw, 'width', p, { positive: true }),
     };
+    if (raw.hideLabel === true) w.hideLabel = true;
+    else if (raw.hideLabel !== undefined && raw.hideLabel !== false) err(`${p}.hideLabel`, 'expected true or false');
     if (legacy) {
       // v1 label fields: validated as before, then moved onto the media item below.
       const l: LegacyLabel = { title: str(raw, 'title', p, false), artist: str(raw, 'artist', p, false), description: '' };

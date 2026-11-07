@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { Museum } from '../shared/museum';
 import { describeSel, selCount, setFinishForWalls, type MultiSel } from './multiSelect';
 import { FinishFields } from './Inspector';
+import { setWorksLabel } from './model';
 
 interface Props {
   museum: Museum;
@@ -37,6 +38,13 @@ export function MultiInspector({ museum: m, multi, includeAreas, onIncludeAreas,
     if (defaultBox.current) defaultBox.current.indeterminate = mixedDefault;
   }, [mixedDefault]);
   const rotatable = multi.walls.length + multi.zones.length + multi.areas.length > 0 || multi.spawn;
+  const works = m.works.filter((w) => multi.works.includes(w.id));
+  const allShown = works.every((w) => !w.hideLabel);
+  const mixedLabels = !allShown && works.some((w) => !w.hideLabel);
+  const labelBox = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (labelBox.current) labelBox.current.indeterminate = mixedLabels;
+  }, [mixedLabels]);
 
   return (
     <section className="panel">
@@ -52,6 +60,12 @@ export function MultiInspector({ museum: m, multi, includeAreas, onIncludeAreas,
         <input type="checkbox" checked={includeAreas} onChange={(e) => onIncludeAreas(e.target.checked)} />
         Include areas when box-selecting on the Build layer
       </label>
+      {works.length > 0 && (
+        <label className="check">
+          <input ref={labelBox} type="checkbox" checked={allShown} onChange={(e) => onChange(setWorksLabel(m, multi.works, e.target.checked))} />
+          Show labels on {works.length} painting{works.length === 1 ? '' : 's'}
+        </label>
+      )}
       {walls.length > 0 && (
         <div className="finish">
           <div className="field-label">Finish of {walls.length} wall{walls.length === 1 ? '' : 's'}</div>

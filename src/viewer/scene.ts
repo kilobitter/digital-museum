@@ -30,6 +30,8 @@ export interface PaintingSlot {
   /** Plan coordinates of the centre (for distance tests). */
   x: number;
   y: number;
+  /** No label next to this work (Work.hideLabel). */
+  hideLabel: boolean;
 }
 
 export interface BuiltScene {
@@ -237,7 +239,7 @@ export async function buildMuseumScene(
     frame.translate(0, 0, FRAME_DEPTH / 2);
     frame.applyMatrix4(m4);
     frameGeos.push(frame);
-    slots.push({ id: work.id, media, w, h, position, rotationY, x: center.x, y: center.y });
+    slots.push({ id: work.id, media, w, h, position, rotationY, x: center.x, y: center.y, hideLabel: work.hideLabel === true });
   }
   const frames = merged(frameGeos);
   // The bias is in depth-buffer steps: it keeps a distant frame (1 cm off the wall) from flickering against the wall, and

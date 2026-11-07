@@ -339,7 +339,7 @@ function place(m: Museum, measure: MeasureText): Placed[] {
     const dir = wallDirection(wall);
     const t = Math.min(Math.max(work.t, 0), wallLength(wall));
     let layout: LabelLayout | null = null;
-    if (hasLabel(media)) {
+    if (!work.hideLabel && hasLabel(media)) {
       layout = layouts.get(media.id) ?? labelLayout(media, measure);
       layouts.set(media.id, layout);
     }
@@ -492,7 +492,7 @@ function artistItems(m: Museum): CheckItem[] {
   const items: CheckItem[] = [];
   const seen = new Set<string>();
   for (const work of m.works) {
-    if (seen.has(work.mediaId)) continue;
+    if (work.hideLabel || seen.has(work.mediaId)) continue; // no label: a missing artist does not show
     seen.add(work.mediaId);
     const media = findMedia(m, work.mediaId);
     if (!media || media.kind !== 'image' || (media.artist ?? '').trim() !== '') continue;

@@ -197,6 +197,20 @@ describe('labels', () => {
   };
   const labelItems = (m: Museum) => run(m, fixed).items.filter((i) => i.kind.startsWith('label-'));
 
+  it('ignores a hidden label', () => {
+    const m = labelled([wall('a', 0, 0, 3, 0)], 2.5);
+    expect(labelItems(m)).toHaveLength(1);
+    expect(labelItems({ ...m, works: m.works.map((w) => ({ ...w, hideLabel: true as const })) })).toEqual([]);
+  });
+
+  it('does not count a hidden label as overlapping the next painting', () => {
+    const a = image({ title: 'A' }), b = image({ title: 'B' });
+    const works = [hang('x', a, 'w1', 2), hang('y', b, 'w1', 3.2)]; // the plaque of x covers 2.6 to 2.94 + the frame of y starts at 2.68
+    const overlap = (ws: Work[]) => run(museum([wall('w1', 0, 0, 20, 0)], { media: [a, b], works: ws }), fixed).items.filter((i) => i.kind === 'overlap');
+    expect(overlap(works)).toHaveLength(1);
+    expect(overlap([{ ...works[0], hideLabel: true }, works[1]])).toEqual([]);
+  });
+
   it('reports a plaque past a free wall end', () => {
     // wall 3 m long, drawn to 3.1; the work covers 2 to 3, the plaque 3.1 to 3.44
     const items = labelItems(labelled([wall('a', 0, 0, 3, 0)], 2.5));
@@ -315,6 +329,18 @@ describe('overlaps', () => {
 });
 
 describe('missing artists', () => {
+  it('leaves out a missing artist when no copy shows a label, and keeps it when one does', () => {
+    const a = image({ title: 'Hidden', artist: undefined });
+    const b = image({ title: 'OneCopy', artist: undefined });
+    const m = museum([wall('w1', 0, 0, 20, 0)], {
+      media: [a, b],
+      works: [hang('x', a, 'w1', 2, { hideLabel: true }), hang('y1', b, 'w1', 5, { hideLabel: true }), hang('y2', b, 'w1', 8)],
+    });
+    const items = run(m).items.filter((i) => i.kind === 'no-artist');
+    expect(items.map((i) => i.message)).toEqual(['"OneCopy" has no artist']);
+    expect(items[0].target).toEqual({ type: 'work', id: 'y2' });
+  });
+
   it('reports each image once, even when hung twice; whitespace counts as empty; unhung is not reported', () => {
     const a = image({ title: 'Seen', artist: undefined });
     const b = image({ title: 'Blank', artist: '  ' });

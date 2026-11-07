@@ -129,6 +129,8 @@ export interface Work {
   centerHeight: number;
   /** Displayed width in metres; height follows the image aspect ratio. Label text comes from the media item. */
   width: number;
+  /** No label next to this work, whatever text its media item has. Per hanging, so copies can differ. Additive in v4 (no version bump). */
+  hideLabel?: true;
 }
 
 export type ZoneShape =
