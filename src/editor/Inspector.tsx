@@ -215,7 +215,7 @@ export function Inspector({ museum: m, mediaUrl, selection, selectedMediaId, onC
           <input type="checkbox" checked={!w.hideLabel} onChange={(e) => onChange(setWorksLabel(m, [w.id], e.target.checked))} />
           {sharedBy > 1 ? 'Show label on this copy' : 'Show label'}
         </label>
-        {media && <LabelFields museum={m} media={media} onChange={onChange} />}
+        {media && !w.hideLabel && <LabelFields museum={m} media={media} onChange={onChange} />}
         <div className="grid2">
           <Field label="Width"><NumField value={w.width} min={0} exclusiveMin onChange={(v) => onChange(setWorkWidth(m, w.id, v), k('width'))} unit="m" /></Field>
           <Field label="Centre height"><NumField value={w.centerHeight} onChange={(v) => onChange(updateWork(m, w.id, { centerHeight: v }), k('h'))} unit="m" /></Field>

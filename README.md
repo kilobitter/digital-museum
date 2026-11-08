@@ -39,8 +39,9 @@ on purpose: if it is taken, the server stops instead of quietly picking another 
   undo step. It refuses when that face already has works.
 - Title, artist and description belong to the painting, not to one place on the wall.
 - **Show label** in a work's inspector turns its label off or on. It belongs to that place on the wall, so a
-  painting hung twice can have a label on one copy only. Select several paintings to change them together. The
-  text is kept, and the Check button leaves out hidden labels and their missing artists.
+  painting hung twice can have a label on one copy only. Select several paintings to change them together. With
+  the label off, the title, artist and description fields are hidden too; the text is kept for when you turn it
+  back on. The Check button leaves out hidden labels and their missing artists.
 - **Random painting** hangs an unhung painting (random) on each click; "Pick another" in a work's
   inspector swaps it.
 - **Wall preview**: selecting one painting shows a small window at the top right of the blueprint, looking
